@@ -1,0 +1,5 @@
+left_camera_config: "config/camera_cal/Left_Air.xml"
+right_camera_config: "config/camera_cal/Right_Air.xml"
+left_folder: "CalibrationImgs/Bin/Left/"
+right_folder: "CalibrationImgs/Bin/Right/"
+baseline: 120  # mm
