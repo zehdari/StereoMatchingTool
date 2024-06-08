@@ -11,12 +11,11 @@ class PointCloudWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.initUI()
+        self.grid = None
 
     def initUI(self):
         self.gl_widget = gl.GLViewWidget()
         self.gl_widget.setCameraPosition(distance=500)
-        self.grid = gl.GLGridItem()
-        self.gl_widget.addItem(self.grid)
         self.scatter = gl.GLScatterPlotItem(size=1)
         self.gl_widget.addItem(self.scatter)
 
@@ -25,7 +24,85 @@ class PointCloudWindow(QtWidgets.QWidget):
         self.setLayout(layout)
 
     def updatePointCloud(self, points, colors):
-        self.scatter.setData(pos=points, color=colors, size=1)
+        self.scatter.setData(pos=points, color=colors, size=self.scatter.size)
+
+    def setPointSize(self, size):
+        self.scatter.setData(size=size)
+
+    def toggleGrid(self):
+        if self.grid is None:
+            self.grid = gl.GLGridItem()
+            self.gl_widget.addItem(self.grid)
+        else:
+            self.gl_widget.removeItem(self.grid)
+            self.grid = None
+
+class PointCloudSettingsWindow(QtWidgets.QWidget):
+    def __init__(self, point_cloud_window, stereo_app):
+        super().__init__()
+        self.point_cloud_window = point_cloud_window
+        self.stereo_app = stereo_app
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Point Cloud Settings')
+        layout = QtWidgets.QVBoxLayout()
+
+        # Point Size Slider
+        self.point_size_label = QtWidgets.QLabel(f"Point Size: {self.point_cloud_window.scatter.size}")
+        self.point_size_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.point_size_slider.setMinimum(1)
+        self.point_size_slider.setMaximum(10)
+        self.point_size_slider.setValue(self.point_cloud_window.scatter.size)
+        self.point_size_slider.valueChanged.connect(self.updatePointSize)
+        layout.addWidget(self.point_size_label)
+        layout.addWidget(self.point_size_slider)
+
+        # Point Scale Slider
+        self.point_scale_label = QtWidgets.QLabel(f"Point Scale: {int(self.stereo_app.point_scale * 1000)}")
+        self.point_scale_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.point_scale_slider.setMinimum(1)
+        self.point_scale_slider.setMaximum(100)
+        self.point_scale_slider.setValue(int(self.stereo_app.point_scale * 1000))
+        self.point_scale_slider.valueChanged.connect(self.updatePointScale)
+        layout.addWidget(self.point_scale_label)
+        layout.addWidget(self.point_scale_slider)
+
+        # Toggle Centering Button
+        self.toggle_centering_button = QtWidgets.QPushButton()
+        self.toggle_centering_button.clicked.connect(self.toggleCentering)
+        layout.addWidget(self.toggle_centering_button)
+
+        # Toggle Grid Button
+        self.toggle_grid_button = QtWidgets.QPushButton()
+        self.toggle_grid_button.clicked.connect(self.toggleGrid)
+        layout.addWidget(self.toggle_grid_button)
+
+        self.setLayout(layout)
+        self.updateButtonLabels()
+
+    def updatePointSize(self, value):
+        self.point_size_label.setText(f"Point Size: {value}")
+        self.point_cloud_window.setPointSize(value)
+
+    def updatePointScale(self, value):
+        scale_factor = value * 0.001
+        self.point_scale_label.setText(f"Point Scale: {value}")
+        self.stereo_app.point_scale = scale_factor
+        self.stereo_app.updateDisparity()
+
+    def toggleCentering(self):
+        self.stereo_app.center_points = not self.stereo_app.center_points
+        self.stereo_app.updateDisparity()
+        self.updateButtonLabels()
+
+    def toggleGrid(self):
+        self.point_cloud_window.toggleGrid()
+        self.updateButtonLabels()
+
+    def updateButtonLabels(self):
+        self.toggle_centering_button.setText(f'Center Points: {"On" if self.stereo_app.center_points else "Off"}')
+        self.toggle_grid_button.setText(f'Show Grid: {"On" if self.point_cloud_window.grid else "Off"}')
 
 class DepthMapWindow(QtWidgets.QWidget):
     def __init__(self):
@@ -109,6 +186,8 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.depth_map_color = True
         self.use_sgbm = True 
         self.use_wls = False
+        self.center_points = False  # New variable to control centering
+        self.point_scale = 1.0  # New variable to control point scaling
         self.loadConfig()
         self.initUI()
         self.loadImagePaths()
@@ -226,6 +305,10 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.toggle_wls_button.clicked.connect(self.toggleWLS)
         self.button_layout.addWidget(self.toggle_wls_button)
 
+        self.point_cloud_settings_button = QtWidgets.QPushButton('Point Cloud Settings')
+        self.point_cloud_settings_button.clicked.connect(self.showPointCloudSettings)
+        self.button_layout.addWidget(self.point_cloud_settings_button)
+
         self.right_layout.addWidget(self.button_panel, 0, QtCore.Qt.AlignTop)
 
         self.depth_map_container = QtWidgets.QWidget()
@@ -241,6 +324,10 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.updateSliders()
         self.updateButtonLabels()
 
+    def showPointCloudSettings(self):
+        self.point_cloud_settings_window = PointCloudSettingsWindow(self.point_cloud_window, self)
+        self.point_cloud_settings_window.show()
+
     def loadImagePaths(self):
         self.left_images = sorted([os.path.join(self.left_folder, img) for img in os.listdir(self.left_folder) if img.endswith('.png')])
         self.right_images = sorted([os.path.join(self.right_folder, img) for img in os.listdir(self.right_folder) if img.endswith('.png')])
@@ -248,6 +335,18 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         if len(self.left_images) != len(self.right_images):
             print("Error: The number of left and right images does not match.")
             exit()
+
+    def detect_image_format(self, image):
+        if len(image.shape) == 2:
+            return "Grayscale"
+        elif len(image.shape) == 3 and image.shape[2] == 3:
+            b, g, r = image[0, 0]
+            if b > r:
+                return "BGR"
+            else:
+                return "RGB"
+        else:
+            return "Unknown"
 
     def loadImagePair(self):
         if 0 <= self.current_index < len(self.left_images):
@@ -257,6 +356,19 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             if self.left_img is None or self.right_img is None:
                 print(f"Error: One or both images not found. Please check the file paths: {self.left_images[self.current_index]}, {self.right_images[self.current_index]}")
                 exit()
+
+            left_format = self.detect_image_format(self.left_img)
+            right_format = self.detect_image_format(self.right_img)
+            
+            if left_format == "Grayscale" or right_format == "Grayscale":
+                self.display_mode = "Greyscale"
+                self.display_button.setEnabled(False)
+            else:
+                self.display_button.setEnabled(True)
+                if left_format != "BGR":
+                    self.left_img = cv2.cvtColor(self.left_img, cv2.COLOR_RGB2BGR)
+                if right_format != "BGR":
+                    self.right_img = cv2.cvtColor(self.right_img, cv2.COLOR_RGB2BGR)
 
             original_shape = self.left_img.shape
             self.left_img = self.resize_image(self.left_img, 600, 400)
@@ -370,8 +482,6 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             self.slider_labels["sigma"].setEnabled(False)
 
     def updateDisparity(self):
-        self.loadImagePair()
-
         self.rectified_left = cv2.remap(self.left_img, self.map1_left, self.map2_left, cv2.INTER_LINEAR)
         self.rectified_right = cv2.remap(self.right_img, self.map1_right, self.map2_right, cv2.INTER_LINEAR)
 
@@ -484,7 +594,12 @@ class StereoVisionApp(QtWidgets.QMainWindow):
 
         out_points[:, 2] = -out_points[:, 2]
 
-        scaling_factor = 0.01
+        # Center the mean of the points
+        if self.center_points:
+            mean = np.mean(out_points, axis=0)
+            out_points -= mean
+
+        scaling_factor = self.point_scale
         out_points = out_points[::10] * scaling_factor
         out_colors = out_colors[::10] / 255.0
 

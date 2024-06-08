@@ -3,6 +3,8 @@
 
 This tool provides a graphical interface for adjusting the disparity map parameters of a stereo vision system. It includes visualizations for depth maps and point clouds and allows for real-time tuning of stereo vision parameters.
 
+![Stereo Matching Tool](assets/stereo_matching_tool.png)
+
 ## Features
 
 - **Disparity Map Adjustment**: Adjust parameters like numDisparities, blockSize, preFilterCap, uniquenessRatio, etc.
