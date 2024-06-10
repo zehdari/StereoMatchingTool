@@ -7,6 +7,9 @@ import sys
 import os
 import yaml
 
+MAX_IMG_WIDTH = 640
+MAX_IMG_HEIGHT = 360
+
 class PointCloudWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
@@ -55,6 +58,7 @@ class PointCloudSettingsWindow(QtWidgets.QWidget):
         self.point_size_slider.setMaximum(10)
         self.point_size_slider.setValue(self.point_cloud_window.scatter.size)
         self.point_size_slider.valueChanged.connect(self.updatePointSize)
+        self.point_size_label.mousePressEvent = lambda event, s=self.point_size_slider, l=self.point_size_label, n="Point Size": self.openInputDialog(s, l, n)
         layout.addWidget(self.point_size_label)
         layout.addWidget(self.point_size_slider)
 
@@ -62,9 +66,10 @@ class PointCloudSettingsWindow(QtWidgets.QWidget):
         self.point_scale_label = QtWidgets.QLabel(f"Point Scale: {int(self.stereo_app.point_scale * 1000)}")
         self.point_scale_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.point_scale_slider.setMinimum(1)
-        self.point_scale_slider.setMaximum(100)
+        self.point_scale_slider.setMaximum(1000)
         self.point_scale_slider.setValue(int(self.stereo_app.point_scale * 1000))
         self.point_scale_slider.valueChanged.connect(self.updatePointScale)
+        self.point_scale_label.mousePressEvent = lambda event, s=self.point_scale_slider, l=self.point_scale_label, n="Point Scale": self.openInputDialog(s, l, n)
         layout.addWidget(self.point_scale_label)
         layout.addWidget(self.point_scale_slider)
 
@@ -80,6 +85,12 @@ class PointCloudSettingsWindow(QtWidgets.QWidget):
 
         self.setLayout(layout)
         self.updateButtonLabels()
+
+    def openInputDialog(self, slider, label, name):
+        value, ok = QtWidgets.QInputDialog.getInt(self, f'Set {name}', f'Enter {name} value:', slider.value(), slider.minimum(), slider.maximum())
+        if ok:
+            slider.setValue(value)
+            label.setText(f"{name}: {value}")
 
     def updatePointSize(self, value):
         self.point_size_label.setText(f"Point Size: {value}")
@@ -110,25 +121,37 @@ class DepthMapWindow(QtWidgets.QWidget):
         self.initUI()
 
     def initUI(self):
-        self.layout = QtWidgets.QVBoxLayout()
+        self.layout = QtWidgets.QHBoxLayout()
         self.depth_map_label = QtWidgets.QLabel()
         self.depth_map_label.setAlignment(QtCore.Qt.AlignCenter)
         self.depth_map_label.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+
+        self.left_image_label = QtWidgets.QLabel()
+        self.left_image_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.left_image_label.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+
         self.layout.addWidget(self.depth_map_label, alignment=QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.left_image_label, alignment=QtCore.Qt.AlignCenter)
+
         self.setLayout(self.layout)
 
-    def updateDepthMap(self, depth_map):
+    def updateDepthMap(self, depth_map, left_image):
         self.depth_map_label.setPixmap(QtGui.QPixmap.fromImage(self.convertToQImage(depth_map)))
+        self.left_image_label.setPixmap(QtGui.QPixmap.fromImage(self.convertToQImage(left_image)))
         self.adjustSize()
 
     def convertToQImage(self, cv_img):
         height, width = cv_img.shape[:2]
+        cv_img = cv_img.copy()
         if len(cv_img.shape) == 2:
             bytes_per_line = width
             return QtGui.QImage(cv_img.data, width, height, bytes_per_line, QtGui.QImage.Format_Grayscale8)
         else:
             bytes_per_line = 3 * width
             return QtGui.QImage(cv_img.data, width, height, bytes_per_line, QtGui.QImage.Format_RGB888).rgbSwapped()
+
+    def toggleLeftImageVisibility(self, visible):
+        self.left_image_label.setVisible(visible)
 
 class StereoViewWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -164,7 +187,44 @@ class ImageWindow(QtWidgets.QWidget):
     def convertToQImage(self, cv_img):
         height, width = cv_img.shape[:2]
         bytes_per_line = 3 * width
+        cv_img = cv_img.copy()
         return QtGui.QImage(cv_img.data, width, height, bytes_per_line, QtGui.QImage.Format_RGB888).rgbSwapped()
+
+class ImageSettingsWindow(QtWidgets.QWidget):
+    def __init__(self, depth_map_window, stereo_app):
+        super().__init__()
+        self.depth_map_window = depth_map_window
+        self.stereo_app = stereo_app
+        self.image_visible = True
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Image Settings')
+        layout = QtWidgets.QVBoxLayout()
+
+        self.toggle_image_button = QtWidgets.QPushButton()
+        self.toggle_image_button.clicked.connect(self.toggleImageVisibility)
+        layout.addWidget(self.toggle_image_button)
+
+        self.display_mode_button = QtWidgets.QPushButton()
+        self.display_mode_button.clicked.connect(self.stereo_app.toggleDisplayMode)
+        layout.addWidget(self.display_mode_button)
+
+        self.open_stereo_view_button = QtWidgets.QPushButton('Open Stereo View')
+        self.open_stereo_view_button.clicked.connect(self.stereo_app.showStereoView)
+        layout.addWidget(self.open_stereo_view_button)
+
+        self.setLayout(layout)
+        self.updateButtonLabels()
+
+    def toggleImageVisibility(self):
+        self.image_visible = not self.image_visible
+        self.depth_map_window.toggleLeftImageVisibility(self.image_visible)
+        self.updateButtonLabels()
+
+    def updateButtonLabels(self):
+        self.toggle_image_button.setText(f'Show Left Image: {"On" if self.image_visible else "Off"}')
+        self.display_mode_button.setText(f'Display Mode: {self.stereo_app.display_mode}')
 
 class StereoVisionApp(QtWidgets.QMainWindow):
     MODES = [cv2.STEREO_SGBM_MODE_SGBM, cv2.STEREO_SGBM_MODE_HH, cv2.STEREO_SGBM_MODE_SGBM_3WAY, cv2.STEREO_SGBM_MODE_HH4]
@@ -175,23 +235,27 @@ class StereoVisionApp(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.point_cloud_window = PointCloudWindow()
-        self.depth_map_window = DepthMapWindow()
-        self.stereo_view_window = StereoViewWindow()
-
-        self.stereo_view_window.show()
-
         self.current_index = 0
         self.display_mode = "RGB"
         self.depth_map_color = True
         self.use_sgbm = True 
         self.use_wls = False
-        self.center_points = False  # New variable to control centering
-        self.point_scale = 1.0  # New variable to control point scaling
+        self.center_points = True  # New variable to control centering
+        self.point_scale = 0.05  # New variable to control point scaling
+        self.scaling_factor = 1.0
+        self.show_depth_map = True  # Variable to toggle between depth and disparity map
+
+        self.point_cloud_window = PointCloudWindow()
+        self.depth_map_window = DepthMapWindow()
+        self.stereo_view_window = StereoViewWindow()
+        self.image_settings_window = ImageSettingsWindow(self.depth_map_window, self)
+
         self.loadConfig()
+        if not self.use_live_feed:
+            self.loadImagePaths()
         self.initUI()
-        self.loadImagePaths()
         self.loadCameraParams()
+        self.loadImagePair()
         self.initData()
         self.image_resized = False
         self.updateDisparity()
@@ -199,9 +263,11 @@ class StereoVisionApp(QtWidgets.QMainWindow):
     def loadConfig(self):
         with open("config/config.yml", "r") as file:
             self.config = yaml.safe_load(file)
-        self.left_folder = self.config["left_folder"]
-        self.right_folder = self.config["right_folder"]
+        self.left_folder = self.config.get("left_folder", "")
+        self.right_folder = self.config.get("right_folder", "")
         self.baseline = self.config["baseline"]
+        self.is_bgr = self.config.get("BGR", False)
+        self.use_live_feed = self.config.get("Live", False)
 
     def initUI(self):
         central_widget = QtWidgets.QWidget()
@@ -211,6 +277,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
 
         self.left_panel = QtWidgets.QWidget()
         self.left_panel.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Expanding)
+        self.left_panel.setMinimumWidth(300)
         self.slider_layout = QtWidgets.QVBoxLayout(self.left_panel)
 
         # Create sliders for disparity parameters
@@ -222,7 +289,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             "speckleRange": (0, 100, 0),
             "speckleWindowSize": (0, 25, 3),
             "disp12MaxDiff": (0, 25, 5),
-            "minDisparity": (0, 25, 0),
+            "minDisparity": (1, 25, 1),
             "P1": (1, 3000, 216),
             "P2": (1, 12000, 864),
             "textureThreshold": (0, 100, 10),  # Only used for BM
@@ -241,6 +308,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             slider.setValue(default)
             slider.valueChanged.connect(self.updateDisparity)
             slider.valueChanged.connect(lambda value, label=slider_label, name=name: label.setText(f"{name}: {value}"))
+            slider_label.mousePressEvent = lambda event, s=slider, l=slider_label, n=name: self.openInputDialog(s, l, n)
             self.slider_layout.addWidget(slider_label)
             self.slider_layout.addWidget(slider)
             self.sliders[name] = slider
@@ -253,6 +321,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.mode_slider.setValue(0)
         self.mode_slider.valueChanged.connect(self.updateDisparity)
         self.mode_slider.valueChanged.connect(lambda value: self.mode_label.setText(f"mode: {self.MODE_NAMES[value]}"))
+        self.mode_label.mousePressEvent = lambda event, s=self.mode_slider, l=self.mode_label, n="mode": self.openInputDialog(s, l, n)
         self.slider_layout.addWidget(self.mode_label)
         self.slider_layout.addWidget(self.mode_slider)
 
@@ -263,16 +332,18 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.prefiltertype_slider.setValue(0)
         self.prefiltertype_slider.valueChanged.connect(self.updateDisparity)
         self.prefiltertype_slider.valueChanged.connect(lambda value: self.prefiltertype_label.setText(f"preFilterType: {self.PREFILTER_TYPE_NAMES[value]}"))
+        self.prefiltertype_label.mousePressEvent = lambda event, s=self.prefiltertype_slider, l=self.prefiltertype_label, n="preFilterType": self.openInputDialog(s, l, n)
         self.slider_layout.addWidget(self.prefiltertype_label)
         self.slider_layout.addWidget(self.prefiltertype_slider)
 
         self.doffs_label = QtWidgets.QLabel("doffs: 0")
         self.doffs_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.doffs_slider.setMinimum(0)
-        self.doffs_slider.setMaximum(100)
+        self.doffs_slider.setMaximum(1000)
         self.doffs_slider.setValue(0)
         self.doffs_slider.valueChanged.connect(self.updateDisparity)
         self.doffs_slider.valueChanged.connect(lambda value: self.doffs_label.setText(f"doffs: {value}"))
+        self.doffs_label.mousePressEvent = lambda event, s=self.doffs_slider, l=self.doffs_label, n="doffs": self.openInputDialog(s, l, n)
         self.slider_layout.addWidget(self.doffs_label)
         self.slider_layout.addWidget(self.doffs_slider)
 
@@ -289,13 +360,13 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.button_layout.addWidget(self.prev_button)
         self.button_layout.addWidget(self.next_button)
 
-        self.display_button = QtWidgets.QPushButton()
-        self.display_button.clicked.connect(self.toggleDisplayMode)
-        self.button_layout.addWidget(self.display_button)
-
         self.depth_map_button = QtWidgets.QPushButton()
         self.depth_map_button.clicked.connect(self.toggleDepthMapColor)
         self.button_layout.addWidget(self.depth_map_button)
+
+        self.toggle_map_button = QtWidgets.QPushButton()
+        self.toggle_map_button.clicked.connect(self.toggleMap)
+        self.button_layout.addWidget(self.toggle_map_button)
 
         self.toggle_algorithm_button = QtWidgets.QPushButton()
         self.toggle_algorithm_button.clicked.connect(self.toggleAlgorithm)
@@ -309,6 +380,10 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.point_cloud_settings_button.clicked.connect(self.showPointCloudSettings)
         self.button_layout.addWidget(self.point_cloud_settings_button)
 
+        self.image_settings_button = QtWidgets.QPushButton('Image Settings')
+        self.image_settings_button.clicked.connect(self.showImageSettings)
+        self.button_layout.addWidget(self.image_settings_button)
+
         self.right_layout.addWidget(self.button_panel, 0, QtCore.Qt.AlignTop)
 
         self.depth_map_container = QtWidgets.QWidget()
@@ -321,27 +396,44 @@ class StereoVisionApp(QtWidgets.QMainWindow):
 
         self.main_layout.addLayout(self.right_layout, 1)
 
+        if self.use_live_feed or len(self.left_images) <= 1:
+            self.prev_button.hide()
+            self.next_button.hide()
+
         self.updateSliders()
         self.updateButtonLabels()
+
+    def openInputDialog(self, slider, label, name):
+        value, ok = QtWidgets.QInputDialog.getInt(self, f'Set {name}', f'Enter {name} value:', slider.value(), slider.minimum(), slider.maximum())
+        if ok:
+            slider.setValue(value)
+            label.setText(f"{name}: {value}")
 
     def showPointCloudSettings(self):
         self.point_cloud_settings_window = PointCloudSettingsWindow(self.point_cloud_window, self)
         self.point_cloud_settings_window.show()
 
-    def loadImagePaths(self):
-        self.left_images = sorted([os.path.join(self.left_folder, img) for img in os.listdir(self.left_folder) if img.endswith('.png')])
-        self.right_images = sorted([os.path.join(self.right_folder, img) for img in os.listdir(self.right_folder) if img.endswith('.png')])
+    def showImageSettings(self):
+        self.image_settings_window.show()
 
-        if len(self.left_images) != len(self.right_images):
-            print("Error: The number of left and right images does not match.")
-            exit()
+    def showStereoView(self):
+        if not self.stereo_view_window.isVisible():
+            self.stereo_view_window.show()
+
+    def loadImagePaths(self):
+        if not self.use_live_feed:
+            self.left_images = sorted([os.path.join(self.left_folder, img) for img in os.listdir(self.left_folder) if img.endswith('.png')])
+            self.right_images = sorted([os.path.join(self.right_folder, img) for img in os.listdir(self.right_folder) if img.endswith('.png')])
+
+            if len(self.left_images) != len(self.right_images):
+                print("Error: The number of left and right images does not match.")
+                exit()
 
     def detect_image_format(self, image):
         if len(image.shape) == 2:
             return "Grayscale"
         elif len(image.shape) == 3 and image.shape[2] == 3:
-            b, g, r = image[0, 0]
-            if b > r:
+            if self.is_bgr:
                 return "BGR"
             else:
                 return "RGB"
@@ -349,41 +441,64 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             return "Unknown"
 
     def loadImagePair(self):
-        if 0 <= self.current_index < len(self.left_images):
-            self.left_img = cv2.imread(self.left_images[self.current_index])
-            self.right_img = cv2.imread(self.right_images[self.current_index])
-
-            if self.left_img is None or self.right_img is None:
-                print(f"Error: One or both images not found. Please check the file paths: {self.left_images[self.current_index]}, {self.right_images[self.current_index]}")
+        if self.use_live_feed:
+            self.left_cap = cv2.VideoCapture(0)
+            self.right_cap = cv2.VideoCapture(0)
+            if not self.left_cap.isOpened() or not self.right_cap.isOpened():
+                print("Error: Unable to open camera feeds")
+                exit()
+            self.timer = QtCore.QTimer(self)
+            self.timer.timeout.connect(self.updateLiveFeed)
+            self.timer.start(30)  # Update every 30ms
+            # Initialize a single frame for calibration purposes
+            ret_left, self.left_img = self.left_cap.read()
+            ret_right, self.right_img = self.right_cap.read()
+            if not ret_left or not ret_right:
+                print("Error: Unable to capture initial frames")
                 exit()
 
-            left_format = self.detect_image_format(self.left_img)
-            right_format = self.detect_image_format(self.right_img)
-            
-            if left_format == "Grayscale" or right_format == "Grayscale":
-                self.display_mode = "Greyscale"
-                self.display_button.setEnabled(False)
-            else:
-                self.display_button.setEnabled(True)
-                if left_format != "BGR":
-                    self.left_img = cv2.cvtColor(self.left_img, cv2.COLOR_RGB2BGR)
-                if right_format != "BGR":
-                    self.right_img = cv2.cvtColor(self.right_img, cv2.COLOR_RGB2BGR)
+        else:
+            if 0 <= self.current_index < len(self.left_images):
+                self.left_img = cv2.imread(self.left_images[self.current_index])
+                self.right_img = cv2.imread(self.right_images[self.current_index])
 
-            original_shape = self.left_img.shape
-            self.left_img = self.resize_image(self.left_img, 600, 400)
-            self.right_img = self.resize_image(self.right_img, 600, 400)
+                if self.left_img is None or self.right_img is None:
+                    print(f"Error: One or both images not found. Please check the file paths: {self.left_images[self.current_index]}, {self.right_images[self.current_index]}")
+                    exit()
 
-            if self.left_img.shape != original_shape:
-                self.image_resized = True
-            else:
-                self.image_resized = False
+        self.left_img = self.color_image(self.left_img)
+        self.right_img = self.color_image(self.right_img)
 
-    def resize_image(self, img, max_width, max_height):
+        original_shape = self.left_img.shape
+
+        self.left_img = self.resize_image(self.left_img, MAX_IMG_HEIGHT, MAX_IMG_WIDTH)
+        self.right_img = self.resize_image(self.right_img, MAX_IMG_HEIGHT, MAX_IMG_WIDTH)
+
+        if self.left_img.shape != original_shape:
+            self.image_resized = True
+        else:
+            self.image_resized = False
+
+    def color_image(self, img):
+        img_format = self.detect_image_format(img)
+        if img_format == "Grayscale":
+            self.display_mode = "Greyscale"
+            self.image_settings_window.display_mode_button.setEnabled(False)
+        else:
+            self.image_settings_window.display_mode_button.setEnabled(True)
+            if img_format != "BGR":
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        
+        return img
+
+    def resize_image(self, img, max_height, max_width):
         height, width = img.shape[:2]
         if width > max_width or height > max_height:
-            scaling_factor = min(max_width / width, max_height / height)
-            img = cv2.resize(img, (int(width * scaling_factor), int(height * scaling_factor)))
+            self.scaling_factor = min(max_width / width, max_height / height)
+            img = cv2.resize(img, (int(width * self.scaling_factor), int(height * self.scaling_factor)))
+        else:
+            self.scaling_factor = 1.0
+
         return img
 
     def loadCameraParams(self):
@@ -402,11 +517,60 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.T = np.array([[self.baseline], [0], [0]], dtype=np.float64)
 
     def initData(self):
-        self.loadImagePair()
+        # Make sure images are loaded before initializing data
+        if self.use_live_feed and (self.left_img is None or self.right_img is None):
+            return
 
-        self.R1, self.R2, self.P1, self.P2, self.Q, _, _ = cv2.stereoRectify(self.K_left, self.dist_coeffs_left, self.K_right, self.dist_coeffs_right, self.left_img.shape[::-1][1:], self.R, self.T, alpha=0)
-        self.map1_left, self.map2_left = cv2.initUndistortRectifyMap(self.K_left, self.dist_coeffs_left, self.R1, self.P1, self.left_img.shape[1::-1], cv2.CV_32FC1)
-        self.map1_right, self.map2_right = cv2.initUndistortRectifyMap(self.K_right, self.dist_coeffs_right, self.R2, self.P2, self.right_img.shape[1::-1], cv2.CV_32FC1)
+        # Get the image size
+        image_size = self.left_img.shape[1::-1]  # (width, height)
+
+        self.K_left[0, 0] *= self.scaling_factor
+        self.K_left[1, 1] *= self.scaling_factor
+        self.K_left[0, 2] *= self.scaling_factor
+        self.K_left[1, 2] *= self.scaling_factor
+
+        self.K_right[0, 0] *= self.scaling_factor
+        self.K_right[1, 1] *= self.scaling_factor
+        self.K_right[0, 2] *= self.scaling_factor
+        self.K_right[1, 2] *= self.scaling_factor
+
+        # Calculate the optimal new camera matrices
+        self.K_left_optimal, self.roi_left = cv2.getOptimalNewCameraMatrix(self.K_left, self.dist_coeffs_left, image_size, 1, image_size)
+        self.K_right_optimal, self.roi_right = cv2.getOptimalNewCameraMatrix(self.K_right, self.dist_coeffs_right, image_size, 1, image_size)
+
+        # Perform stereo rectification
+        self.R1, self.R2, self.P1, self.P2, self.Q, _, _ = cv2.stereoRectify(
+            self.K_left_optimal, self.dist_coeffs_left, 
+            self.K_right_optimal, self.dist_coeffs_right, 
+            image_size, self.R, self.T, 
+            alpha=0
+        )
+
+        # Initialize undistort rectify maps
+        self.map1_left, self.map2_left = cv2.initUndistortRectifyMap(
+            self.K_left, self.dist_coeffs_left, None, self.K_left_optimal, 
+            image_size, cv2.CV_32FC1
+        )
+        
+        self.map1_right, self.map2_right = cv2.initUndistortRectifyMap(
+            self.K_right, self.dist_coeffs_right, None, self.K_right_optimal, 
+            image_size, cv2.CV_32FC1
+        )
+      
+    def updateLiveFeed(self):
+        ret_left, left_img = self.left_cap.read()
+        ret_right, right_img = self.right_cap.read()
+        if not ret_left or not ret_right:
+            print("Error: Unable to capture frames")
+            return
+
+        left_img = self.color_image(left_img)
+        right_img = self.color_image(right_img)
+        self.left_img = self.resize_image(left_img, MAX_IMG_HEIGHT, MAX_IMG_WIDTH)
+        self.right_img = self.resize_image(right_img, MAX_IMG_HEIGHT, MAX_IMG_WIDTH)
+        
+
+        self.updateDisparity()
 
     def toggleDisplayMode(self):
         modes = ["RGB", "BGR", "Greyscale"]
@@ -417,6 +581,11 @@ class StereoVisionApp(QtWidgets.QMainWindow):
 
     def toggleDepthMapColor(self):
         self.depth_map_color = not self.depth_map_color
+        self.updateDisparity()
+        self.updateButtonLabels()
+
+    def toggleMap(self):
+        self.show_depth_map = not self.show_depth_map
         self.updateDisparity()
         self.updateButtonLabels()
 
@@ -484,6 +653,10 @@ class StereoVisionApp(QtWidgets.QMainWindow):
     def updateDisparity(self):
         self.rectified_left = cv2.remap(self.left_img, self.map1_left, self.map2_left, cv2.INTER_LINEAR)
         self.rectified_right = cv2.remap(self.right_img, self.map1_right, self.map2_right, cv2.INTER_LINEAR)
+        x_left, y_left, w_left, h_left = self.roi_left
+
+        self.rectified_left = self.rectified_left[y_left:y_left+h_left, x_left:x_left+w_left]
+        self.rectified_right = self.rectified_right[y_left:y_left+h_left, x_left:x_left+w_left]
 
         min_disparity = self.sliders["minDisparity"].value()
         num_disparities = self.sliders["numDisparities"].value() * 16
@@ -538,40 +711,47 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         disparity_map = stereo.compute(left_img_gray, right_img_gray).astype(np.float32) / 16.0
 
         if self.use_wls:
-            
             disparity_map_right = right_stereo.compute(right_img_gray, left_img_gray).astype(np.float32) / 16.0
-
             wls_filter = cv2.ximgproc.createDisparityWLSFilter(stereo)
             wls_filter.setLambda(lmbda)
             wls_filter.setSigmaColor(sigma)
-
             disparity_map = wls_filter.filter(disparity_map, left_img_gray, disparity_map_right=disparity_map_right)
-
         else:
             disparity_map_right = np.zeros(disparity_map.shape, dtype=np.float32)
-        
+
         disparity_map[disparity_map < min_disparity] = min_disparity 
         depth_map = np.zeros(disparity_map.shape, dtype=np.float32)
         epsilon = 1e-6  # Small value to prevent division by zero
         valid_disparity_mask = disparity_map > (min_disparity + epsilon)
         depth_map[valid_disparity_mask] = self.baseline * self.focal_length / (disparity_map[valid_disparity_mask] + doffs + epsilon)
 
-        # Display depth map
-        if self.depth_map_color:
-            depth_map_normalized = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX)
-            depth_map_normalized = np.uint8(depth_map_normalized)
-            depth_map_colored = cv2.applyColorMap(depth_map_normalized, cv2.COLORMAP_JET)
-            self.depth_map_window.updateDepthMap(depth_map_colored)
+        # Display map
+        if self.show_depth_map:
+            display_map = depth_map
         else:
-            depth_map_normalized = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX)
-            depth_map_normalized = np.uint8(depth_map_normalized)
-            self.depth_map_window.updateDepthMap(depth_map_normalized)
+            display_map = disparity_map
 
-        points = cv2.reprojectImageTo3D(disparity_map, self.Q)
+        display_map = np.nan_to_num(display_map, nan=0.0, posinf=255.0, neginf=0.0)  # Handle invalid values
+
+        if self.depth_map_color:
+            display_map_normalized = cv2.normalize(display_map, None, 0, 255, cv2.NORM_MINMAX)
+            display_map_normalized = np.uint8(display_map_normalized)
+            display_map_colored = cv2.applyColorMap(display_map_normalized, cv2.COLORMAP_JET)
+            self.depth_map_window.updateDepthMap(display_map_colored, self.getImageForDisplayMode(self.rectified_left))
+        else:
+            display_map_normalized = cv2.normalize(display_map, None, 0, 255, cv2.NORM_MINMAX)
+            display_map_normalized = np.uint8(display_map_normalized)
+            self.depth_map_window.updateDepthMap(display_map_normalized, self.getImageForDisplayMode(self.rectified_left))
+
+        points = cv2.reprojectImageTo3D(depth_map, self.Q)
+        
         colors_bgr = self.rectified_left
 
         mask = disparity_map > min_disparity
         out_points = points[mask]
+
+        if out_points.size == 0:
+            return
 
         if self.display_mode == "RGB":
             out_colors = colors_bgr[mask]
@@ -581,21 +761,14 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             colors_gray = cv2.cvtColor(colors_bgr, cv2.COLOR_BGR2GRAY)
             out_colors = cv2.cvtColor(colors_gray, cv2.COLOR_GRAY2RGB)[mask]
 
-        # There's a better way to do this but I'm lazy
+        # Rotate points if needed
         rotation_matrix_x = np.array([[1, 0, 0],
                                     [0, 0, -1],
                                     [0, 1, 0]], dtype=np.float64)
-        out_points = out_points.dot(rotation_matrix_x.T)
-
-        rotation_matrix_y = np.array([[-1, 0, 0],
-                                    [0, 1, 0],
-                                    [0, 0, -1]], dtype=np.float64)
-        out_points = out_points.dot(rotation_matrix_y.T)
-
-        out_points[:, 2] = -out_points[:, 2]
+        out_points = out_points.dot(rotation_matrix_x.T)  
 
         # Center the mean of the points
-        if self.center_points:
+        if self.center_points and out_points.size > 0:
             mean = np.mean(out_points, axis=0)
             out_points -= mean
 
@@ -606,37 +779,40 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.point_cloud_window.updatePointCloud(out_points, out_colors)
 
         # Update rectified images
-        if self.display_mode == "RGB":
-            left_rectified_color = cv2.cvtColor(self.rectified_left, cv2.COLOR_BGR2RGB)
-            right_rectified_color = cv2.cvtColor(self.rectified_right, cv2.COLOR_BGR2RGB)
-        elif self.display_mode == "Greyscale":
-            left_rectified_color = cv2.cvtColor(self.rectified_left, cv2.COLOR_BGR2GRAY)
-            left_rectified_color = cv2.cvtColor(left_rectified_color, cv2.COLOR_GRAY2RGB)
-            right_rectified_color = cv2.cvtColor(self.rectified_right, cv2.COLOR_BGR2GRAY)
-            right_rectified_color = cv2.cvtColor(right_rectified_color, cv2.COLOR_GRAY2RGB)
-        else:
-            left_rectified_color = self.rectified_left
-            right_rectified_color = self.rectified_right
+        self.stereo_view_window.updateImages(self.getImageForDisplayMode(self.rectified_left), self.getImageForDisplayMode(self.rectified_right))
 
-        self.stereo_view_window.updateImages(left_rectified_color, right_rectified_color)
+    def getImageForDisplayMode(self, image):
+        if self.display_mode == "RGB":
+            return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        elif self.display_mode == "Greyscale":
+            gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            return cv2.cvtColor(gray_image, cv2.COLOR_GRAY2RGB)
+        else:
+            return image
 
     def nextImage(self):
         if self.current_index < len(self.left_images) - 1:
             self.current_index += 1
             self.loadImagePair()
             self.updateDisparity()
+        self.updateButtonLabels()
 
     def prevImage(self):
         if self.current_index > 0:
             self.current_index -= 1
             self.loadImagePair()
             self.updateDisparity()
+        self.updateButtonLabels()
 
     def updateButtonLabels(self):
-        self.display_button.setText(f'Display Mode: {self.display_mode}')
-        self.depth_map_button.setText(f'Depth Map Color: {"On" if self.depth_map_color else "Off"}')
+        self.depth_map_button.setText(f'{ "Depth Map" if self.show_depth_map else "Disparity Map"} Color: {"On" if self.depth_map_color else "Off"}')
         self.toggle_algorithm_button.setText(f'Algorithm: {"SGBM" if self.use_sgbm else "BM"}')
         self.toggle_wls_button.setText(f'WLS Filter: {"On" if self.use_wls else "Off"}')
+        self.toggle_map_button.setText(f'Showing: {"Depth Map" if self.show_depth_map else "Disparity Map"}')
+        if not self.use_live_feed:
+            self.prev_button.setEnabled(self.current_index > 0)
+            self.next_button.setEnabled(self.current_index < len(self.left_images) - 1)
+        self.image_settings_window.updateButtonLabels()
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)

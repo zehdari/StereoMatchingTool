@@ -1,5 +1,7 @@
-left_folder: "CalibrationImgs/TestSet/Left/"
-right_folder: "CalibrationImgs/TestSet/Right/"
+left_folder: "stereo_imgs/TestSet/Left/"
+right_folder: "stereo_imgs/TestSet/Right/"
 left_camera_config: "config/camera_cal/Left_test.xml"
 right_camera_config: "config/camera_cal/Right_test.xml"
 baseline: 120  # mm
+BGR: False # Leave false for RGB or Greyscale
+Live: True
