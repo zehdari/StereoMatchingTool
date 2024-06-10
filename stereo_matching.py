@@ -240,10 +240,10 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.depth_map_color = True
         self.use_sgbm = True 
         self.use_wls = False
-        self.center_points = True  # New variable to control centering
-        self.point_scale = 0.05  # New variable to control point scaling
+        self.center_points = True 
+        self.point_scale = 0.05  
         self.scaling_factor = 1.0
-        self.show_depth_map = True  # Variable to toggle between depth and disparity map
+        self.show_depth_map = True 
 
         self.point_cloud_window = PointCloudWindow()
         self.depth_map_window = DepthMapWindow()
@@ -443,13 +443,13 @@ class StereoVisionApp(QtWidgets.QMainWindow):
     def loadImagePair(self):
         if self.use_live_feed:
             self.left_cap = cv2.VideoCapture(0)
-            self.right_cap = cv2.VideoCapture(0)
+            self.right_cap = cv2.VideoCapture(1)
             if not self.left_cap.isOpened() or not self.right_cap.isOpened():
                 print("Error: Unable to open camera feeds")
                 exit()
             self.timer = QtCore.QTimer(self)
             self.timer.timeout.connect(self.updateLiveFeed)
-            self.timer.start(30)  # Update every 30ms
+            self.timer.start(30)  
             # Initialize a single frame for calibration purposes
             ret_left, self.left_img = self.left_cap.read()
             ret_right, self.right_img = self.right_cap.read()
