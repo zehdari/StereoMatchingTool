@@ -226,6 +226,58 @@ class ImageSettingsWindow(QtWidgets.QWidget):
         self.toggle_image_button.setText(f'Show Left Image: {"On" if self.image_visible else "Off"}')
         self.display_mode_button.setText(f'Display Mode: {self.stereo_app.display_mode}')
 
+class VideoSlider(QtWidgets.QWidget):
+    def __init__(self, stereo_app):
+        super().__init__()
+        self.stereo_app = stereo_app
+        self.initUI()
+
+    def initUI(self):
+        layout = QtWidgets.QHBoxLayout()
+
+        self.play_pause_button = QtWidgets.QPushButton('Play')
+        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+
+        self.play_pause_button.clicked.connect(self.togglePlayPause)
+        self.slider.sliderReleased.connect(self.updateFramePosition)
+        self.slider.sliderPressed.connect(self.pauseVideo)
+
+        layout.addWidget(self.play_pause_button)
+        layout.addWidget(self.slider)
+
+        self.setLayout(layout)
+
+    def updateFramePosition(self):
+        position = self.slider.value()
+        self.stereo_app.setFramePosition(position)
+        if self.stereo_app.playing:
+            self.stereo_app.playVideo()
+        self.updatePlayPauseButton()
+
+    def pauseVideo(self):
+        self.stereo_app.pauseVideo()
+        self.updatePlayPauseButton()
+
+    def togglePlayPause(self):
+        if self.stereo_app.playing:
+            self.stereo_app.pauseVideo()
+        else:
+            self.stereo_app.playVideo()
+        self.updatePlayPauseButton()
+
+    def setSliderRange(self, max_value):
+        self.slider.setMaximum(max_value)
+
+    def updateSliderPosition(self, position):
+        self.slider.setValue(position)
+        self.updatePlayPauseButton()
+
+    def updatePlayPauseButton(self):
+        if self.slider.value() >= self.slider.maximum():
+            self.play_pause_button.setText('Restart')
+        else:
+            self.play_pause_button.setText('Pause' if self.stereo_app.playing else 'Play')
+
 class StereoVisionApp(QtWidgets.QMainWindow):
     MODES = [cv2.STEREO_SGBM_MODE_SGBM, cv2.STEREO_SGBM_MODE_HH, cv2.STEREO_SGBM_MODE_SGBM_3WAY, cv2.STEREO_SGBM_MODE_HH4]
     MODE_NAMES = ["SGBM", "HH", "SGBM_3WAY", "HH4"]
@@ -244,11 +296,13 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.point_scale = 0.05  
         self.scaling_factor = 1.0
         self.show_depth_map = True 
+        self.playing = False
 
         self.point_cloud_window = PointCloudWindow()
         self.depth_map_window = DepthMapWindow()
         self.stereo_view_window = StereoViewWindow()
         self.image_settings_window = ImageSettingsWindow(self.depth_map_window, self)
+        self.video_slider = VideoSlider(self)
 
         self.loadConfig()
         if not self.use_live_feed:
@@ -347,12 +401,18 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.slider_layout.addWidget(self.doffs_label)
         self.slider_layout.addWidget(self.doffs_slider)
 
+        # Save Settings Button
+        self.save_settings_button = QtWidgets.QPushButton('Save Settings')
+        self.save_settings_button.clicked.connect(self.saveSettings)
+        self.slider_layout.addWidget(self.save_settings_button)
+
         self.main_layout.addWidget(self.left_panel)
 
         self.right_layout = QtWidgets.QVBoxLayout()
         
         self.button_panel = QtWidgets.QWidget()
         self.button_layout = QtWidgets.QHBoxLayout(self.button_panel)
+
         self.prev_button = QtWidgets.QPushButton('Previous')
         self.next_button = QtWidgets.QPushButton('Next')
         self.prev_button.clicked.connect(self.prevImage)
@@ -385,18 +445,13 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.button_layout.addWidget(self.image_settings_button)
 
         self.right_layout.addWidget(self.button_panel, 0, QtCore.Qt.AlignTop)
-
-        self.depth_map_container = QtWidgets.QWidget()
-        self.depth_map_layout = QtWidgets.QVBoxLayout(self.depth_map_container)
-        self.depth_map_layout.setContentsMargins(0, 0, 0, 0)
-        self.depth_map_layout.addWidget(self.depth_map_window, alignment=QtCore.Qt.AlignCenter)
-        self.right_layout.addWidget(self.depth_map_container, 0, QtCore.Qt.AlignTop)
-
+        self.right_layout.addWidget(self.video_slider, 0, QtCore.Qt.AlignTop)
+        self.right_layout.addWidget(self.depth_map_window, 0, QtCore.Qt.AlignTop)
         self.right_layout.addWidget(self.point_cloud_window, 1)
 
         self.main_layout.addLayout(self.right_layout, 1)
 
-        if self.use_live_feed or len(self.left_images) <= 1:
+        if self.use_live_feed or len(self.image_pairs) <= 1:
             self.prev_button.hide()
             self.next_button.hide()
 
@@ -422,11 +477,12 @@ class StereoVisionApp(QtWidgets.QMainWindow):
 
     def loadImagePaths(self):
         if not self.use_live_feed:
-            self.left_images = sorted([os.path.join(self.left_folder, img) for img in os.listdir(self.left_folder) if img.endswith('.png')])
-            self.right_images = sorted([os.path.join(self.right_folder, img) for img in os.listdir(self.right_folder) if img.endswith('.png')])
+            left_files = sorted([os.path.join(self.left_folder, f) for f in os.listdir(self.left_folder) if f.endswith(('.png', '.jpg', '.jpeg', '.mp4', '.avi'))])
+            right_files = sorted([os.path.join(self.right_folder, f) for f in os.listdir(self.right_folder) if f.endswith(('.png', '.jpg', '.jpeg', '.mp4', '.avi'))])
+            self.image_pairs = list(zip(left_files, right_files))
 
-            if len(self.left_images) != len(self.right_images):
-                print("Error: The number of left and right images does not match.")
+            if len(self.image_pairs) == 0:
+                print("Error: No images/videos found in the specified folders.")
                 exit()
 
     def detect_image_format(self, image):
@@ -458,12 +514,30 @@ class StereoVisionApp(QtWidgets.QMainWindow):
                 exit()
 
         else:
-            if 0 <= self.current_index < len(self.left_images):
-                self.left_img = cv2.imread(self.left_images[self.current_index])
-                self.right_img = cv2.imread(self.right_images[self.current_index])
+            left_file, right_file = self.image_pairs[self.current_index]
+
+            if left_file.endswith(('.mp4', '.avi')) and right_file.endswith(('.mp4', '.avi')):
+                self.left_cap = cv2.VideoCapture(left_file)
+                self.right_cap = cv2.VideoCapture(right_file)
+                if not self.left_cap.isOpened() or not self.right_cap.isOpened():
+                    print("Error: Unable to open video files")
+                    exit()
+                self.timer = QtCore.QTimer(self)
+                self.timer.timeout.connect(self.updateLiveFeed)
+                #self.timer.start(30)  
+                # Initialize a single frame for calibration purposes
+                ret_left, self.left_img = self.left_cap.read()
+                ret_right, self.right_img = self.right_cap.read()
+                if not ret_left or not ret_right:
+                    print("Error: Unable to capture initial frames")
+                    exit()
+                self.video_slider.setSliderRange(int(self.left_cap.get(cv2.CAP_PROP_FRAME_COUNT)))
+            else:
+                self.left_img = cv2.imread(left_file)
+                self.right_img = cv2.imread(right_file)
 
                 if self.left_img is None or self.right_img is None:
-                    print(f"Error: One or both images not found. Please check the file paths: {self.left_images[self.current_index]}, {self.right_images[self.current_index]}")
+                    print(f"Error: One or both images not found. Please check the file paths: {left_file}, {right_file}")
                     exit()
 
         self.left_img = self.color_image(self.left_img)
@@ -486,7 +560,9 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             self.image_settings_window.display_mode_button.setEnabled(False)
         else:
             self.image_settings_window.display_mode_button.setEnabled(True)
-            if img_format != "BGR":
+            if img_format == "BGR" and not self.is_bgr:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            elif img_format == "RGB" and self.is_bgr:
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         
         return img
@@ -561,7 +637,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         ret_left, left_img = self.left_cap.read()
         ret_right, right_img = self.right_cap.read()
         if not ret_left or not ret_right:
-            print("Error: Unable to capture frames")
+            self.pauseVideo()
             return
 
         left_img = self.color_image(left_img)
@@ -569,8 +645,13 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.left_img = self.resize_image(left_img, MAX_IMG_HEIGHT, MAX_IMG_WIDTH)
         self.right_img = self.resize_image(right_img, MAX_IMG_HEIGHT, MAX_IMG_WIDTH)
         
-
         self.updateDisparity()
+        self.updateSliderPosition()
+
+    def updateSliderPosition(self):
+        if self.left_cap:
+            position = int(self.left_cap.get(cv2.CAP_PROP_POS_FRAMES))
+            self.video_slider.updateSliderPosition(position)
 
     def toggleDisplayMode(self):
         modes = ["RGB", "BGR", "Greyscale"]
@@ -791,7 +872,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             return image
 
     def nextImage(self):
-        if self.current_index < len(self.left_images) - 1:
+        if self.current_index < len(self.image_pairs) - 1:
             self.current_index += 1
             self.loadImagePair()
             self.updateDisparity()
@@ -804,6 +885,25 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             self.updateDisparity()
         self.updateButtonLabels()
 
+    def playVideo(self):
+        self.playing = True
+        self.timer.start(30)  # Assuming 30 FPS
+
+    def pauseVideo(self):
+        self.playing = False
+        self.timer.stop()
+
+    def setFramePosition(self, position):
+        if self.left_cap and self.right_cap:
+            self.left_cap.set(cv2.CAP_PROP_POS_FRAMES, position)
+            self.right_cap.set(cv2.CAP_PROP_POS_FRAMES, position)
+            ret_left, self.left_img = self.left_cap.read()
+            ret_right, self.right_img = self.right_cap.read()
+            if ret_left and ret_right:
+                self.left_img = self.resize_image(self.left_img, MAX_IMG_HEIGHT, MAX_IMG_WIDTH)
+                self.right_img = self.resize_image(self.right_img, MAX_IMG_HEIGHT, MAX_IMG_WIDTH)
+                self.updateDisparity()
+
     def updateButtonLabels(self):
         self.depth_map_button.setText(f'{ "Depth Map" if self.show_depth_map else "Disparity Map"} Color: {"On" if self.depth_map_color else "Off"}')
         self.toggle_algorithm_button.setText(f'Algorithm: {"SGBM" if self.use_sgbm else "BM"}')
@@ -811,8 +911,51 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.toggle_map_button.setText(f'Showing: {"Depth Map" if self.show_depth_map else "Disparity Map"}')
         if not self.use_live_feed:
             self.prev_button.setEnabled(self.current_index > 0)
-            self.next_button.setEnabled(self.current_index < len(self.left_images) - 1)
+            self.next_button.setEnabled(self.current_index < len(self.image_pairs) - 1)
         self.image_settings_window.updateButtonLabels()
+
+    def saveSettings(self):
+        text, ok = QtWidgets.QInputDialog.getText(self, 'Save Settings', 'Enter filename:')
+        if ok and text:
+            settings = self.collectSettings()
+            directory = "saved_settings"
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+            file_path = os.path.join(directory, f"{text}.yml")
+            self.saveSettingsToFile(settings, file_path)
+
+    def collectSettings(self):
+        settings = {
+            "numDisparities": self.sliders["numDisparities"].value(),
+            "blockSize": self.sliders["blockSize"].value(),
+            "preFilterCap": self.sliders["preFilterCap"].value(),
+            "uniquenessRatio": self.sliders["uniquenessRatio"].value(),
+            "speckleRange": self.sliders["speckleRange"].value(),
+            "speckleWindowSize": self.sliders["speckleWindowSize"].value(),
+            "disp12MaxDiff": self.sliders["disp12MaxDiff"].value(),
+            "minDisparity": self.sliders["minDisparity"].value(),
+            "P1": self.sliders["P1"].value(),
+            "P2": self.sliders["P2"].value(),
+            "textureThreshold": self.sliders["textureThreshold"].value(),
+            "preFilterSize": self.sliders["preFilterSize"].value(),
+            "lambda": self.sliders["lambda"].value(),
+            "sigma": self.sliders["sigma"].value(),
+            "mode": self.MODE_NAMES[self.mode_slider.value()],
+            "preFilterType": self.PREFILTER_TYPE_NAMES[self.prefiltertype_slider.value()],
+            "doffs": self.doffs_slider.value(),
+            "depthMapColor": self.depth_map_color,
+            "useSGBM": self.use_sgbm,
+            "useWLS": self.use_wls,
+            "centerPoints": self.center_points,
+            "pointScale": self.point_scale,
+            "displayMode": self.display_mode,
+            "showDepthMap": self.show_depth_map,
+        }
+        return settings
+
+    def saveSettingsToFile(self, settings, file_path):
+        with open(file_path, "w") as file:
+            yaml.dump(settings, file)
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
