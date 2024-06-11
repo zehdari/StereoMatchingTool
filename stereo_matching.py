@@ -91,6 +91,17 @@ class StereoViewWindow(QtWidgets.QMainWindow):
 
     def updateImages(self, left_img, right_img):
         self.image_window.updateImages(left_img, right_img)
+        self.adjustWindowSize()
+
+    def adjustWindowSize(self):
+        left_pixmap = self.image_window.left_label.pixmap()
+        right_pixmap = self.image_window.right_label.pixmap()
+
+        if left_pixmap and right_pixmap:
+            width = left_pixmap.width() + right_pixmap.width()
+            height = max(left_pixmap.height(), right_pixmap.height())
+            self.setMinimumSize(width, height)
+            self.resize(width, height)
 
 class ImageWindow(QtWidgets.QWidget):
     def __init__(self):
@@ -128,6 +139,11 @@ class UnifiedSettingsWindow(QtWidgets.QWidget):
         self.setWindowTitle('Settings')
         self.layout = QtWidgets.QVBoxLayout()
 
+        # Map Settings Section
+        self.depth_map_settings_group = QtWidgets.QGroupBox("Map Settings")
+        self.initDepthMapSettingsUI()
+        self.layout.addWidget(self.depth_map_settings_group)
+
         # Image Settings Section
         self.image_settings_group = QtWidgets.QGroupBox("Image Settings")
         self.initImageSettingsUI()
@@ -138,14 +154,32 @@ class UnifiedSettingsWindow(QtWidgets.QWidget):
         self.initPointCloudSettingsUI()
         self.layout.addWidget(self.point_cloud_settings_group)
 
+        # Video Settings Section
+        self.video_settings_group = QtWidgets.QGroupBox("Video Settings")
+        self.initVideoSettingsUI()
+        self.layout.addWidget(self.video_settings_group)
+
         self.setLayout(self.layout)
         self.updateButtonLabels()
+
+    def initDepthMapSettingsUI(self):
+        layout = QtWidgets.QVBoxLayout()
+
+        self.depth_map_color_button = QtWidgets.QPushButton('Toggle Map Color')
+        self.depth_map_color_button.setCheckable(True)
+        self.depth_map_color_button.setChecked(True)
+        self.depth_map_color_button.clicked.connect(self.stereo_app.toggleDepthMapColor)
+        layout.addWidget(self.depth_map_color_button)
+
+        self.depth_map_settings_group.setLayout(layout)
 
     def initImageSettingsUI(self):
         layout = QtWidgets.QVBoxLayout()
         
-        self.toggle_image_button = QtWidgets.QPushButton()
+        self.toggle_image_button = QtWidgets.QPushButton('Show Left Image')
         self.toggle_image_button.clicked.connect(self.toggleImageVisibility)
+        self.toggle_image_button.setCheckable(True)
+        self.toggle_image_button.setChecked(True)
         layout.addWidget(self.toggle_image_button)
 
         self.display_mode_button = QtWidgets.QPushButton()
@@ -183,13 +217,28 @@ class UnifiedSettingsWindow(QtWidgets.QWidget):
 
         self.toggle_centering_button = QtWidgets.QPushButton()
         self.toggle_centering_button.clicked.connect(self.toggleCentering)
+        self.toggle_centering_button.setCheckable(True)
+        self.toggle_centering_button.setChecked(True)
         layout.addWidget(self.toggle_centering_button)
 
         self.toggle_grid_button = QtWidgets.QPushButton()
         self.toggle_grid_button.clicked.connect(self.toggleGrid)
+        self.toggle_grid_button.setCheckable(True)
+        self.toggle_grid_button.setChecked(False)
         layout.addWidget(self.toggle_grid_button)
 
         self.point_cloud_settings_group.setLayout(layout)
+
+    def initVideoSettingsUI(self):
+        layout = QtWidgets.QVBoxLayout()
+
+        self.auto_loop_button = QtWidgets.QPushButton()
+        self.auto_loop_button.clicked.connect(self.toggleAutoLoop)
+        self.auto_loop_button.setCheckable(True)
+        self.auto_loop_button.setChecked(False)
+        layout.addWidget(self.auto_loop_button)
+
+        self.video_settings_group.setLayout(layout)
 
     def openInputDialog(self, slider, label, name):
         value, ok = QtWidgets.QInputDialog.getInt(self, f'Set {name}', f'Enter {name} value:', slider.value(), slider.minimum(), slider.maximum())
@@ -221,11 +270,17 @@ class UnifiedSettingsWindow(QtWidgets.QWidget):
         self.point_cloud_window.toggleGrid()
         self.updateButtonLabels()
 
+    def toggleAutoLoop(self):
+        self.stereo_app.auto_loop = not self.stereo_app.auto_loop
+        self.stereo_app.video_slider.updatePlayPauseButton()  # Add this line to update the button
+        self.updateButtonLabels()
+
     def updateButtonLabels(self):
-        self.toggle_image_button.setText(f'Show Left Image: {"On" if self.image_visible else "Off"}')
+        self.toggle_image_button.setText(f'Show Left Image')
         self.display_mode_button.setText(f'Display Mode: {self.stereo_app.display_mode}')
-        self.toggle_centering_button.setText(f'Center Points: {"On" if self.stereo_app.center_points else "Off"}')
-        self.toggle_grid_button.setText(f'Show Grid: {"On" if self.point_cloud_window.grid else "Off"}')
+        self.toggle_centering_button.setText(f'Center Points')
+        self.toggle_grid_button.setText(f'Show Grid')
+        self.auto_loop_button.setText(f'Auto Loop')
 
 class VideoSlider(QtWidgets.QWidget):
     def __init__(self, stereo_app):
@@ -248,15 +303,19 @@ class VideoSlider(QtWidgets.QWidget):
 
         self.setLayout(layout)
 
-    def updateFramePosition(self):
+    def updateFramePosition(self):   
         position = self.slider.value()
         if position >= self.slider.maximum():
-            self.stereo_app.restartVideo()
+            if self.stereo_app.auto_loop:
+                self.stereo_app.restartVideo()
+            else:
+                self.stereo_app.pauseVideo()
         else:
             self.stereo_app.setFramePosition(position)
             if self.stereo_app.playing:
                 self.stereo_app.playVideo()
         self.updatePlayPauseButton()
+
 
     def pauseVideo(self):
         self.stereo_app.pauseVideo()
@@ -280,10 +339,13 @@ class VideoSlider(QtWidgets.QWidget):
         self.updatePlayPauseButton()
 
     def updatePlayPauseButton(self):
-        if self.slider.value() >= self.slider.maximum():
-            self.play_pause_button.setText('Restart')
-        else:
+        if self.stereo_app.auto_loop:
             self.play_pause_button.setText('Pause' if self.stereo_app.playing else 'Play')
+        else:
+            if self.slider.value() >= self.slider.maximum():
+                self.play_pause_button.setText('Restart')
+            else:
+                self.play_pause_button.setText('Pause' if self.stereo_app.playing else 'Play')
 
 class StereoVisionApp(QtWidgets.QMainWindow):
     MODES = [cv2.STEREO_SGBM_MODE_SGBM, cv2.STEREO_SGBM_MODE_HH, cv2.STEREO_SGBM_MODE_SGBM_3WAY, cv2.STEREO_SGBM_MODE_HH4]
@@ -304,6 +366,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.scaling_factor = 1.0
         self.show_depth_map = True 
         self.playing = False
+        self.auto_loop = False
 
         self.point_cloud_window = PointCloudWindow()
         self.depth_map_window = DepthMapWindow()
@@ -426,10 +489,6 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.button_layout.addWidget(self.prev_button)
         self.button_layout.addWidget(self.next_button)
 
-        self.depth_map_button = QtWidgets.QPushButton()
-        self.depth_map_button.clicked.connect(self.toggleDepthMapColor)
-        self.button_layout.addWidget(self.depth_map_button)
-
         self.toggle_map_button = QtWidgets.QPushButton()
         self.toggle_map_button.clicked.connect(self.toggleMap)
         self.button_layout.addWidget(self.toggle_map_button)
@@ -440,6 +499,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
 
         self.toggle_wls_button = QtWidgets.QPushButton()
         self.toggle_wls_button.clicked.connect(self.toggleWLS)
+        self.toggle_wls_button.setCheckable(True)
         self.button_layout.addWidget(self.toggle_wls_button)
 
         self.settings_button = QtWidgets.QPushButton('Settings')
@@ -467,10 +527,17 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             label.setText(f"{name}: {value}")
 
     def showSettings(self):
-        self.unified_settings_window.show()
+        if self.unified_settings_window.isVisible():
+            self.unified_settings_window.raise_()
+            self.unified_settings_window.activateWindow()
+        else:
+            self.unified_settings_window.show()
 
     def showStereoView(self):
-        if not self.stereo_view_window.isVisible():
+        if self.stereo_view_window.isVisible():
+            self.stereo_view_window.raise_()
+            self.stereo_view_window.activateWindow()
+        else:
             self.stereo_view_window.show()
 
     def loadImagePaths(self):
@@ -636,7 +703,10 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         ret_left, left_img = self.left_cap.read()
         ret_right, right_img = self.right_cap.read()
         if not ret_left or not ret_right:
-            self.pauseVideo()
+            if self.auto_loop:
+                self.restartVideo()
+            else:
+                self.pauseVideo()
             return
 
         left_img = self.color_image(left_img)
@@ -893,6 +963,10 @@ class StereoVisionApp(QtWidgets.QMainWindow):
     def playVideo(self):
         self.playing = True
         self.timer.start(30)  # Assuming 30 FPS
+        if self.left_cap and self.right_cap:
+            current_frame = self.video_slider.slider.value()
+            self.left_cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
+            self.right_cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
 
     def pauseVideo(self):
         self.playing = False
@@ -902,6 +976,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         if self.left_cap and self.right_cap:
             self.left_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             self.right_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            self.updateSliderPosition()
             self.playVideo()
 
     def setFramePosition(self, position):
@@ -911,14 +986,15 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             ret_left, self.left_img = self.left_cap.read()
             ret_right, self.right_img = self.right_cap.read()
             if ret_left and ret_right:
+                self.left_img = self.color_image(self.left_img) 
+                self.right_img = self.color_image(self.right_img)
                 self.left_img = self.resize_image(self.left_img, MAX_IMG_HEIGHT, MAX_IMG_WIDTH)
                 self.right_img = self.resize_image(self.right_img, MAX_IMG_HEIGHT, MAX_IMG_WIDTH)
                 self.updateDisparity()
 
     def updateButtonLabels(self):
-        self.depth_map_button.setText(f'{ "Depth Map" if self.show_depth_map else "Disparity Map"} Color: {"On" if self.depth_map_color else "Off"}')
         self.toggle_algorithm_button.setText(f'Algorithm: {"SGBM" if self.use_sgbm else "BM"}')
-        self.toggle_wls_button.setText(f'WLS Filter: {"On" if self.use_wls else "Off"}')
+        self.toggle_wls_button.setText(f'WLS Filter')
         self.toggle_map_button.setText(f'Showing: {"Depth Map" if self.show_depth_map else "Disparity Map"}')
         if not self.use_live_feed:
             self.prev_button.setEnabled(self.current_index > 0)
