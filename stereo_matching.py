@@ -471,9 +471,17 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.slider_layout.addWidget(self.doffs_label)
         self.slider_layout.addWidget(self.doffs_slider)
 
+        button_layout = QtWidgets.QHBoxLayout()
+
+        self.load_parameters_button = QtWidgets.QPushButton('Load Parameters')
+        self.load_parameters_button.clicked.connect(self.loadParameters)
+        button_layout.addWidget(self.load_parameters_button)
+
         self.save_parameters_button = QtWidgets.QPushButton('Save Parameters')
         self.save_parameters_button.clicked.connect(self.saveParameters)
-        self.slider_layout.addWidget(self.save_parameters_button)
+        button_layout.addWidget(self.save_parameters_button)
+
+        self.slider_layout.addLayout(button_layout)
 
         self.main_layout.addWidget(self.left_panel)
 
@@ -1002,14 +1010,54 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.unified_settings_window.updateButtonLabels()
         self.video_slider.updatePlayPauseButton()
 
+    def loadParameters(self):
+        options = QtWidgets.QFileDialog.Options()
+        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load Parameters", "", "YAML Files (*.yml);;All Files (*)", options=options)
+        if file_name:
+            self.loadParametersFromFile(file_name)
+
+    def loadParametersFromFile(self, file_path):
+        with open(file_path, 'r') as file:
+            parameters = yaml.safe_load(file)
+            self.applyParameters(parameters)
+
+    def applyParameters(self, parameters):
+        self.sliders["numDisparities"].setValue(parameters.get("numDisparities", self.sliders["numDisparities"].value()))
+        self.sliders["blockSize"].setValue(parameters.get("blockSize", self.sliders["blockSize"].value()))
+        self.sliders["preFilterCap"].setValue(parameters.get("preFilterCap", self.sliders["preFilterCap"].value()))
+        self.sliders["uniquenessRatio"].setValue(parameters.get("uniquenessRatio", self.sliders["uniquenessRatio"].value()))
+        self.sliders["speckleRange"].setValue(parameters.get("speckleRange", self.sliders["speckleRange"].value()))
+        self.sliders["speckleWindowSize"].setValue(parameters.get("speckleWindowSize", self.sliders["speckleWindowSize"].value()))
+        self.sliders["disp12MaxDiff"].setValue(parameters.get("disp12MaxDiff", self.sliders["disp12MaxDiff"].value()))
+        self.sliders["minDisparity"].setValue(parameters.get("minDisparity", self.sliders["minDisparity"].value()))
+        self.sliders["P1"].setValue(parameters.get("P1", self.sliders["P1"].value()))
+        self.sliders["P2"].setValue(parameters.get("P2", self.sliders["P2"].value()))
+        self.sliders["textureThreshold"].setValue(parameters.get("textureThreshold", self.sliders["textureThreshold"].value()))
+        self.sliders["preFilterSize"].setValue(parameters.get("preFilterSize", self.sliders["preFilterSize"].value()))
+        self.sliders["lambda"].setValue(parameters.get("lambda", self.sliders["lambda"].value()))
+        self.sliders["sigma"].setValue(parameters.get("sigma", self.sliders["sigma"].value()))
+        self.mode_slider.setValue(self.MODE_NAMES.index(parameters.get("mode", self.MODE_NAMES[self.mode_slider.value()])))
+        self.prefiltertype_slider.setValue(self.PREFILTER_TYPE_NAMES.index(parameters.get("preFilterType", self.PREFILTER_TYPE_NAMES[self.prefiltertype_slider.value()])))
+        self.doffs_slider.setValue(parameters.get("doffs", self.doffs_slider.value()))
+        self.depth_map_color = parameters.get("depthMapColor", self.depth_map_color)
+        self.use_sgbm = parameters.get("useSGBM", self.use_sgbm)
+        self.use_wls = parameters.get("useWLS", self.use_wls)
+        self.center_points = parameters.get("centerPoints", self.center_points)
+        self.point_scale = parameters.get("pointScale", self.point_scale)
+        self.display_mode = parameters.get("displayMode", self.display_mode)
+        self.show_depth_map = parameters.get("showDepthMap", self.show_depth_map)
+
+        self.updateSliders()
+        self.updateDisparity()
+        self.updateButtonLabels()
+
     def saveParameters(self):
-        text, ok = QtWidgets.QInputDialog.getText(self, 'Save Parameters', 'Enter filename:')
-        if ok and text:
+        options = QtWidgets.QFileDialog.Options()
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Parameters", "", "YAML Files (*.yml);;All Files (*)", options=options)
+        if file_path:
+            if not file_path.endswith(".yml"):
+                file_path += ".yml"
             settings = self.collectParameters()
-            directory = "saved_parameters"
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-            file_path = os.path.join(directory, f"{text}.yml")
             self.saveParametersToFile(settings, file_path)
 
     def collectParameters(self):
