@@ -249,9 +249,12 @@ class VideoSlider(QtWidgets.QWidget):
 
     def updateFramePosition(self):
         position = self.slider.value()
-        self.stereo_app.setFramePosition(position)
-        if self.stereo_app.playing:
-            self.stereo_app.playVideo()
+        if position >= self.slider.maximum():
+            self.stereo_app.restartVideo()
+        else:
+            self.stereo_app.setFramePosition(position)
+            if self.stereo_app.playing:
+                self.stereo_app.playVideo()
         self.updatePlayPauseButton()
 
     def pauseVideo(self):
@@ -259,10 +262,13 @@ class VideoSlider(QtWidgets.QWidget):
         self.updatePlayPauseButton()
 
     def togglePlayPause(self):
-        if self.stereo_app.playing:
-            self.stereo_app.pauseVideo()
+        if self.play_pause_button.text() == 'Restart':
+            self.stereo_app.restartVideo()
         else:
-            self.stereo_app.playVideo()
+            if self.stereo_app.playing:
+                self.stereo_app.pauseVideo()
+            else:
+                self.stereo_app.playVideo()
         self.updatePlayPauseButton()
 
     def setSliderRange(self, max_value):
@@ -524,7 +530,6 @@ class StereoVisionApp(QtWidgets.QMainWindow):
                     exit()
                 self.timer = QtCore.QTimer(self)
                 self.timer.timeout.connect(self.updateLiveFeed)
-                #self.timer.start(30)  
                 # Initialize a single frame for calibration purposes
                 ret_left, self.left_img = self.left_cap.read()
                 ret_right, self.right_img = self.right_cap.read()
@@ -532,9 +537,11 @@ class StereoVisionApp(QtWidgets.QMainWindow):
                     print("Error: Unable to capture initial frames")
                     exit()
                 self.video_slider.setSliderRange(int(self.left_cap.get(cv2.CAP_PROP_FRAME_COUNT)))
+                self.video_slider.show()
             else:
                 self.left_img = cv2.imread(left_file)
                 self.right_img = cv2.imread(right_file)
+                self.video_slider.hide()
 
                 if self.left_img is None or self.right_img is None:
                     print(f"Error: One or both images not found. Please check the file paths: {left_file}, {right_file}")
@@ -892,6 +899,12 @@ class StereoVisionApp(QtWidgets.QMainWindow):
     def pauseVideo(self):
         self.playing = False
         self.timer.stop()
+    
+    def restartVideo(self):
+        if self.left_cap and self.right_cap:
+            self.left_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            self.right_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            self.playVideo()
 
     def setFramePosition(self, position):
         if self.left_cap and self.right_cap:
@@ -913,6 +926,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             self.prev_button.setEnabled(self.current_index > 0)
             self.next_button.setEnabled(self.current_index < len(self.image_pairs) - 1)
         self.image_settings_window.updateButtonLabels()
+        self.video_slider.updatePlayPauseButton()
 
     def saveSettings(self):
         text, ok = QtWidgets.QInputDialog.getText(self, 'Save Settings', 'Enter filename:')
