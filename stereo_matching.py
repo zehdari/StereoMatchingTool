@@ -567,9 +567,9 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             self.image_settings_window.display_mode_button.setEnabled(False)
         else:
             self.image_settings_window.display_mode_button.setEnabled(True)
-            if img_format == "BGR" and not self.is_bgr:
+            if img_format == "BGR" and self.is_bgr:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            elif img_format == "RGB" and self.is_bgr:
+            elif img_format == "RGB" and not self.is_bgr:
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         
         return img
