@@ -367,6 +367,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.show_depth_map = True 
         self.playing = False
         self.auto_loop = False
+        self.current_file = None
 
         self.point_cloud_window = PointCloudWindow()
         self.depth_map_window = DepthMapWindow()
@@ -394,6 +395,37 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.use_live_feed = self.config.get("Live", False)
 
     def initUI(self):
+
+        # Create the menu bar
+        menubar = self.menuBar()
+
+        # Add "File" menu
+        fileMenu = menubar.addMenu('File')
+
+        # Add "Save" action
+        self.saveAction = QtWidgets.QAction('Save', self)
+        self.saveAction.setEnabled(False)
+        self.saveAction.triggered.connect(self.saveParameters)
+        fileMenu.addAction(self.saveAction)
+
+        # Add "Save As" action
+        saveAsAction = QtWidgets.QAction('Save As', self)
+        saveAsAction.triggered.connect(self.saveAsParameters)
+        fileMenu.addAction(saveAsAction)
+
+        # Add "Load Parameters" action
+        loadAction = QtWidgets.QAction('Load Parameters', self)
+        loadAction.triggered.connect(self.loadParameters)
+        fileMenu.addAction(loadAction)
+
+         # Add "Settings" menu
+        settingsMenu = menubar.addMenu('Settings')
+
+        # Add actions to "Settings" menu
+        openSettingsAction = QtWidgets.QAction('Open Settings', self)
+        openSettingsAction.triggered.connect(self.showSettings)
+        settingsMenu.addAction(openSettingsAction)
+
         central_widget = QtWidgets.QWidget()
         self.setCentralWidget(central_widget)
 
@@ -473,14 +505,6 @@ class StereoVisionApp(QtWidgets.QMainWindow):
 
         button_layout = QtWidgets.QHBoxLayout()
 
-        self.load_parameters_button = QtWidgets.QPushButton('Load Parameters')
-        self.load_parameters_button.clicked.connect(self.loadParameters)
-        button_layout.addWidget(self.load_parameters_button)
-
-        self.save_parameters_button = QtWidgets.QPushButton('Save Parameters')
-        self.save_parameters_button.clicked.connect(self.saveParameters)
-        button_layout.addWidget(self.save_parameters_button)
-
         self.slider_layout.addLayout(button_layout)
 
         self.main_layout.addWidget(self.left_panel)
@@ -509,10 +533,6 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.toggle_wls_button.clicked.connect(self.toggleWLS)
         self.toggle_wls_button.setCheckable(True)
         self.button_layout.addWidget(self.toggle_wls_button)
-
-        self.settings_button = QtWidgets.QPushButton('Settings')
-        self.settings_button.clicked.connect(self.showSettings)
-        self.button_layout.addWidget(self.settings_button)
 
         self.right_layout.addWidget(self.button_panel, 0, QtCore.Qt.AlignTop)
         self.right_layout.addWidget(self.video_slider, 0, QtCore.Qt.AlignTop)
@@ -1016,11 +1036,6 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         if file_name:
             self.loadParametersFromFile(file_name)
 
-    def loadParametersFromFile(self, file_path):
-        with open(file_path, 'r') as file:
-            parameters = yaml.safe_load(file)
-            self.applyParameters(parameters)
-
     def applyParameters(self, parameters):
         self.sliders["numDisparities"].setValue(parameters.get("numDisparities", self.sliders["numDisparities"].value()))
         self.sliders["blockSize"].setValue(parameters.get("blockSize", self.sliders["blockSize"].value()))
@@ -1052,6 +1067,13 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.updateButtonLabels()
 
     def saveParameters(self):
+        if self.current_file:
+            settings = self.collectParameters()
+            self.saveParametersToFile(settings, self.current_file)
+        else:
+            self.saveAsParameters()
+
+    def saveAsParameters(self):
         options = QtWidgets.QFileDialog.Options()
         file_path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Parameters", "", "YAML Files (*.yml);;All Files (*)", options=options)
         if file_path:
@@ -1059,6 +1081,13 @@ class StereoVisionApp(QtWidgets.QMainWindow):
                 file_path += ".yml"
             settings = self.collectParameters()
             self.saveParametersToFile(settings, file_path)
+            self.saveAction.setEnabled(True)
+
+    def loadParametersFromFile(self, file_path):
+        with open(file_path, 'r') as file:
+            parameters = yaml.safe_load(file)
+            self.applyParameters(parameters)
+            self.saveAction.setEnabled(True)
 
     def collectParameters(self):
         parameters = {
