@@ -40,81 +40,6 @@ class PointCloudWindow(QtWidgets.QWidget):
             self.gl_widget.removeItem(self.grid)
             self.grid = None
 
-class PointCloudSettingsWindow(QtWidgets.QWidget):
-    def __init__(self, point_cloud_window, stereo_app):
-        super().__init__()
-        self.point_cloud_window = point_cloud_window
-        self.stereo_app = stereo_app
-        self.initUI()
-
-    def initUI(self):
-        self.setWindowTitle('Point Cloud Settings')
-        layout = QtWidgets.QVBoxLayout()
-
-        # Point Size Slider
-        self.point_size_label = QtWidgets.QLabel(f"Point Size: {self.point_cloud_window.scatter.size}")
-        self.point_size_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.point_size_slider.setMinimum(1)
-        self.point_size_slider.setMaximum(10)
-        self.point_size_slider.setValue(self.point_cloud_window.scatter.size)
-        self.point_size_slider.valueChanged.connect(self.updatePointSize)
-        self.point_size_label.mousePressEvent = lambda event, s=self.point_size_slider, l=self.point_size_label, n="Point Size": self.openInputDialog(s, l, n)
-        layout.addWidget(self.point_size_label)
-        layout.addWidget(self.point_size_slider)
-
-        # Point Scale Slider
-        self.point_scale_label = QtWidgets.QLabel(f"Point Scale: {int(self.stereo_app.point_scale * 1000)}")
-        self.point_scale_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.point_scale_slider.setMinimum(1)
-        self.point_scale_slider.setMaximum(1000)
-        self.point_scale_slider.setValue(int(self.stereo_app.point_scale * 1000))
-        self.point_scale_slider.valueChanged.connect(self.updatePointScale)
-        self.point_scale_label.mousePressEvent = lambda event, s=self.point_scale_slider, l=self.point_scale_label, n="Point Scale": self.openInputDialog(s, l, n)
-        layout.addWidget(self.point_scale_label)
-        layout.addWidget(self.point_scale_slider)
-
-        # Toggle Centering Button
-        self.toggle_centering_button = QtWidgets.QPushButton()
-        self.toggle_centering_button.clicked.connect(self.toggleCentering)
-        layout.addWidget(self.toggle_centering_button)
-
-        # Toggle Grid Button
-        self.toggle_grid_button = QtWidgets.QPushButton()
-        self.toggle_grid_button.clicked.connect(self.toggleGrid)
-        layout.addWidget(self.toggle_grid_button)
-
-        self.setLayout(layout)
-        self.updateButtonLabels()
-
-    def openInputDialog(self, slider, label, name):
-        value, ok = QtWidgets.QInputDialog.getInt(self, f'Set {name}', f'Enter {name} value:', slider.value(), slider.minimum(), slider.maximum())
-        if ok:
-            slider.setValue(value)
-            label.setText(f"{name}: {value}")
-
-    def updatePointSize(self, value):
-        self.point_size_label.setText(f"Point Size: {value}")
-        self.point_cloud_window.setPointSize(value)
-
-    def updatePointScale(self, value):
-        scale_factor = value * 0.001
-        self.point_scale_label.setText(f"Point Scale: {value}")
-        self.stereo_app.point_scale = scale_factor
-        self.stereo_app.updateDisparity()
-
-    def toggleCentering(self):
-        self.stereo_app.center_points = not self.stereo_app.center_points
-        self.stereo_app.updateDisparity()
-        self.updateButtonLabels()
-
-    def toggleGrid(self):
-        self.point_cloud_window.toggleGrid()
-        self.updateButtonLabels()
-
-    def updateButtonLabels(self):
-        self.toggle_centering_button.setText(f'Center Points: {"On" if self.stereo_app.center_points else "Off"}')
-        self.toggle_grid_button.setText(f'Show Grid: {"On" if self.point_cloud_window.grid else "Off"}')
-
 class DepthMapWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
@@ -190,18 +115,35 @@ class ImageWindow(QtWidgets.QWidget):
         cv_img = cv_img.copy()
         return QtGui.QImage(cv_img.data, width, height, bytes_per_line, QtGui.QImage.Format_RGB888).rgbSwapped()
 
-class ImageSettingsWindow(QtWidgets.QWidget):
-    def __init__(self, depth_map_window, stereo_app):
+class UnifiedSettingsWindow(QtWidgets.QWidget):
+    def __init__(self, depth_map_window, point_cloud_window, stereo_app):
         super().__init__()
         self.depth_map_window = depth_map_window
+        self.point_cloud_window = point_cloud_window
         self.stereo_app = stereo_app
         self.image_visible = True
         self.initUI()
 
     def initUI(self):
-        self.setWindowTitle('Image Settings')
-        layout = QtWidgets.QVBoxLayout()
+        self.setWindowTitle('Settings')
+        self.layout = QtWidgets.QVBoxLayout()
 
+        # Image Settings Section
+        self.image_settings_group = QtWidgets.QGroupBox("Image Settings")
+        self.initImageSettingsUI()
+        self.layout.addWidget(self.image_settings_group)
+
+        # Point Cloud Settings Section
+        self.point_cloud_settings_group = QtWidgets.QGroupBox("Point Cloud Settings")
+        self.initPointCloudSettingsUI()
+        self.layout.addWidget(self.point_cloud_settings_group)
+
+        self.setLayout(self.layout)
+        self.updateButtonLabels()
+
+    def initImageSettingsUI(self):
+        layout = QtWidgets.QVBoxLayout()
+        
         self.toggle_image_button = QtWidgets.QPushButton()
         self.toggle_image_button.clicked.connect(self.toggleImageVisibility)
         layout.addWidget(self.toggle_image_button)
@@ -214,17 +156,76 @@ class ImageSettingsWindow(QtWidgets.QWidget):
         self.open_stereo_view_button.clicked.connect(self.stereo_app.showStereoView)
         layout.addWidget(self.open_stereo_view_button)
 
-        self.setLayout(layout)
-        self.updateButtonLabels()
+        self.image_settings_group.setLayout(layout)
+
+    def initPointCloudSettingsUI(self):
+        layout = QtWidgets.QVBoxLayout()
+        
+        self.point_size_label = QtWidgets.QLabel(f"Point Size: {self.point_cloud_window.scatter.size}")
+        self.point_size_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.point_size_slider.setMinimum(1)
+        self.point_size_slider.setMaximum(10)
+        self.point_size_slider.setValue(self.point_cloud_window.scatter.size)
+        self.point_size_slider.valueChanged.connect(self.updatePointSize)
+        self.point_size_label.mousePressEvent = lambda event, s=self.point_size_slider, l=self.point_size_label, n="Point Size": self.openInputDialog(s, l, n)
+        layout.addWidget(self.point_size_label)
+        layout.addWidget(self.point_size_slider)
+
+        self.point_scale_label = QtWidgets.QLabel(f"Point Scale: {int(self.stereo_app.point_scale * 1000)}")
+        self.point_scale_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.point_scale_slider.setMinimum(1)
+        self.point_scale_slider.setMaximum(1000)
+        self.point_scale_slider.setValue(int(self.stereo_app.point_scale * 1000))
+        self.point_scale_slider.valueChanged.connect(self.updatePointScale)
+        self.point_scale_label.mousePressEvent = lambda event, s=self.point_scale_slider, l=self.point_scale_label, n="Point Scale": self.openInputDialog(s, l, n)
+        layout.addWidget(self.point_scale_label)
+        layout.addWidget(self.point_scale_slider)
+
+        self.toggle_centering_button = QtWidgets.QPushButton()
+        self.toggle_centering_button.clicked.connect(self.toggleCentering)
+        layout.addWidget(self.toggle_centering_button)
+
+        self.toggle_grid_button = QtWidgets.QPushButton()
+        self.toggle_grid_button.clicked.connect(self.toggleGrid)
+        layout.addWidget(self.toggle_grid_button)
+
+        self.point_cloud_settings_group.setLayout(layout)
+
+    def openInputDialog(self, slider, label, name):
+        value, ok = QtWidgets.QInputDialog.getInt(self, f'Set {name}', f'Enter {name} value:', slider.value(), slider.minimum(), slider.maximum())
+        if ok:
+            slider.setValue(value)
+            label.setText(f"{name}: {value}")
 
     def toggleImageVisibility(self):
         self.image_visible = not self.image_visible
         self.depth_map_window.toggleLeftImageVisibility(self.image_visible)
         self.updateButtonLabels()
 
+    def updatePointSize(self, value):
+        self.point_size_label.setText(f"Point Size: {value}")
+        self.point_cloud_window.setPointSize(value)
+
+    def updatePointScale(self, value):
+        scale_factor = value * 0.001
+        self.point_scale_label.setText(f"Point Scale: {value}")
+        self.stereo_app.point_scale = scale_factor
+        self.stereo_app.updateDisparity()
+
+    def toggleCentering(self):
+        self.stereo_app.center_points = not self.stereo_app.center_points
+        self.stereo_app.updateDisparity()
+        self.updateButtonLabels()
+
+    def toggleGrid(self):
+        self.point_cloud_window.toggleGrid()
+        self.updateButtonLabels()
+
     def updateButtonLabels(self):
         self.toggle_image_button.setText(f'Show Left Image: {"On" if self.image_visible else "Off"}')
         self.display_mode_button.setText(f'Display Mode: {self.stereo_app.display_mode}')
+        self.toggle_centering_button.setText(f'Center Points: {"On" if self.stereo_app.center_points else "Off"}')
+        self.toggle_grid_button.setText(f'Show Grid: {"On" if self.point_cloud_window.grid else "Off"}')
 
 class VideoSlider(QtWidgets.QWidget):
     def __init__(self, stereo_app):
@@ -307,7 +308,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.point_cloud_window = PointCloudWindow()
         self.depth_map_window = DepthMapWindow()
         self.stereo_view_window = StereoViewWindow()
-        self.image_settings_window = ImageSettingsWindow(self.depth_map_window, self)
+        self.unified_settings_window = UnifiedSettingsWindow(self.depth_map_window, self.point_cloud_window, self)
         self.video_slider = VideoSlider(self)
 
         self.loadConfig()
@@ -407,10 +408,9 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.slider_layout.addWidget(self.doffs_label)
         self.slider_layout.addWidget(self.doffs_slider)
 
-        # Save Settings Button
-        self.save_settings_button = QtWidgets.QPushButton('Save Settings')
-        self.save_settings_button.clicked.connect(self.saveSettings)
-        self.slider_layout.addWidget(self.save_settings_button)
+        self.save_parameters_button = QtWidgets.QPushButton('Save Parameters')
+        self.save_parameters_button.clicked.connect(self.saveParameters)
+        self.slider_layout.addWidget(self.save_parameters_button)
 
         self.main_layout.addWidget(self.left_panel)
 
@@ -442,13 +442,9 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.toggle_wls_button.clicked.connect(self.toggleWLS)
         self.button_layout.addWidget(self.toggle_wls_button)
 
-        self.point_cloud_settings_button = QtWidgets.QPushButton('Point Cloud Settings')
-        self.point_cloud_settings_button.clicked.connect(self.showPointCloudSettings)
-        self.button_layout.addWidget(self.point_cloud_settings_button)
-
-        self.image_settings_button = QtWidgets.QPushButton('Image Settings')
-        self.image_settings_button.clicked.connect(self.showImageSettings)
-        self.button_layout.addWidget(self.image_settings_button)
+        self.settings_button = QtWidgets.QPushButton('Settings')
+        self.settings_button.clicked.connect(self.showSettings)
+        self.button_layout.addWidget(self.settings_button)
 
         self.right_layout.addWidget(self.button_panel, 0, QtCore.Qt.AlignTop)
         self.right_layout.addWidget(self.video_slider, 0, QtCore.Qt.AlignTop)
@@ -470,12 +466,8 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             slider.setValue(value)
             label.setText(f"{name}: {value}")
 
-    def showPointCloudSettings(self):
-        self.point_cloud_settings_window = PointCloudSettingsWindow(self.point_cloud_window, self)
-        self.point_cloud_settings_window.show()
-
-    def showImageSettings(self):
-        self.image_settings_window.show()
+    def showSettings(self):
+        self.unified_settings_window.show()
 
     def showStereoView(self):
         if not self.stereo_view_window.isVisible():
@@ -564,9 +556,9 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         img_format = self.detect_image_format(img)
         if img_format == "Grayscale":
             self.display_mode = "Greyscale"
-            self.image_settings_window.display_mode_button.setEnabled(False)
+            self.unified_settings_window.display_mode_button.setEnabled(False)
         else:
-            self.image_settings_window.display_mode_button.setEnabled(True)
+            self.unified_settings_window.display_mode_button.setEnabled(True)
             if img_format == "BGR" and self.is_bgr:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             elif img_format == "RGB" and not self.is_bgr:
@@ -879,6 +871,9 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             return image
 
     def nextImage(self):
+        if self.playing:
+            self.pauseVideo()
+        self.video_slider.slider.setValue(0)
         if self.current_index < len(self.image_pairs) - 1:
             self.current_index += 1
             self.loadImagePair()
@@ -886,6 +881,9 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.updateButtonLabels()
 
     def prevImage(self):
+        if self.playing:
+            self.pauseVideo()
+        self.video_slider.slider.setValue(0)
         if self.current_index > 0:
             self.current_index -= 1
             self.loadImagePair()
@@ -925,21 +923,21 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         if not self.use_live_feed:
             self.prev_button.setEnabled(self.current_index > 0)
             self.next_button.setEnabled(self.current_index < len(self.image_pairs) - 1)
-        self.image_settings_window.updateButtonLabels()
+        self.unified_settings_window.updateButtonLabels()
         self.video_slider.updatePlayPauseButton()
 
-    def saveSettings(self):
-        text, ok = QtWidgets.QInputDialog.getText(self, 'Save Settings', 'Enter filename:')
+    def saveParameters(self):
+        text, ok = QtWidgets.QInputDialog.getText(self, 'Save Parameters', 'Enter filename:')
         if ok and text:
-            settings = self.collectSettings()
-            directory = "saved_settings"
+            settings = self.collectParameters()
+            directory = "saved_parameters"
             if not os.path.exists(directory):
                 os.makedirs(directory)
             file_path = os.path.join(directory, f"{text}.yml")
-            self.saveSettingsToFile(settings, file_path)
+            self.saveParametersToFile(settings, file_path)
 
-    def collectSettings(self):
-        settings = {
+    def collectParameters(self):
+        parameters = {
             "numDisparities": self.sliders["numDisparities"].value(),
             "blockSize": self.sliders["blockSize"].value(),
             "preFilterCap": self.sliders["preFilterCap"].value(),
@@ -965,11 +963,11 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             "displayMode": self.display_mode,
             "showDepthMap": self.show_depth_map,
         }
-        return settings
+        return parameters
 
-    def saveSettingsToFile(self, settings, file_path):
+    def saveParametersToFile(self, parameters, file_path):
         with open(file_path, "w") as file:
-            yaml.dump(settings, file)
+            yaml.dump(parameters, file)
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
