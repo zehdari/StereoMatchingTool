@@ -159,7 +159,6 @@ class UnifiedSettingsWindow(QtWidgets.QWidget):
         self.layout.addWidget(self.video_settings_group)
 
         self.setLayout(self.layout)
-        self.updateButtonLabels()
 
     def initDepthMapSettingsUI(self):
         layout = QtWidgets.QVBoxLayout()
@@ -254,13 +253,6 @@ class UnifiedSettingsWindow(QtWidgets.QWidget):
         self.point_scale_label.setText(f"Point Scale: {value}")
         self.stereo_app.point_scale = scale_factor
         self.stereo_app.updateDisparity()
-
-    def updateButtonLabels(self):
-        self.toggle_image_button.setText(f'Show Left Image')
-        self.display_mode_button.setText(f'Display Mode: {self.stereo_app.display_mode}')
-        self.toggle_centering_button.setText(f'Center Points')
-        self.toggle_grid_button.setText(f'Show Grid')
-        self.auto_loop_button.setText(f'Auto Loop')
 
 class VideoSlider(QtWidgets.QWidget):
     def __init__(self, stereo_app):
@@ -425,7 +417,6 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.rgbAction = QtWidgets.QAction('RGB', self, checkable=True)
         self.bgrAction = QtWidgets.QAction('BGR', self, checkable=True)
         self.greyscaleAction = QtWidgets.QAction('Greyscale', self, checkable=True)
-        self.updateDisplayModeActions()
         displayModeGroup = QtWidgets.QAction('Display Mode', self)
         displayModeGroup.setMenu(displayModeMenu)
 
@@ -591,8 +582,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             self.prev_button.hide()
             self.next_button.hide()
 
-        self.updateSliders()
-        self.updateButtonLabels()
+        self.updateGUI()
 
     def openInputDialog(self, slider, label, name):
         value, ok = QtWidgets.QInputDialog.getInt(self, f'Set {name}', f'Enter {name} value:', slider.value(), slider.minimum(), slider.maximum())
@@ -800,61 +790,48 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         modes = ["RGB", "BGR", "Greyscale"]
         current_index = modes.index(self.display_mode)
         self.display_mode = modes[(current_index + 1) % len(modes)]
-        self.updateDisplayModeActions()
         self.updateDisparity()
+        self.updateGUI()
     
     def toggleDepthMapColor(self):
         self.depth_map_color = not self.depth_map_color
         self.updateDisparity()
-        self.updateButtonLabels()
-        self.toggleMapColorAction.setChecked(self.depth_map_color)
-        self.unified_settings_window.depth_map_color_button.setChecked(self.depth_map_color)
+        self.updateGUI()
 
     def toggleMap(self):
         self.show_depth_map = not self.show_depth_map
         self.updateDisparity()
-        self.updateButtonLabels()
+        self.updateGUI()
 
     def toggleAlgorithm(self):
         self.use_sgbm = not self.use_sgbm
-        self.updateSliders()
         self.updateDisparity()
-        self.updateButtonLabels()
+        self.updateGUI()
 
     def toggleWLS(self):
         self.use_wls = not self.use_wls
-        self.updateSliders()
         self.updateDisparity()
-        self.updateButtonLabels()
+        self.updateGUI()
 
     def toggleImageVisibility(self):
         self.image_visible = not self.image_visible
         self.depth_map_window.toggleLeftImageVisibility(self.image_visible)
-        self.updateButtonLabels()
-        self.showLeftImageAction.setChecked(self.image_visible)
-        self.unified_settings_window.toggle_image_button.setChecked(self.image_visible)
+        self.updateGUI()
 
     def toggleAutoLoop(self):
         self.auto_loop = not self.auto_loop
         self.video_slider.updatePlayPauseButton()
-        self.updateButtonLabels()
-        self.autoLoopAction.setChecked(self.auto_loop)
-        self.unified_settings_window.auto_loop_button.setChecked(self.auto_loop)
+        self.updateGUI()
 
     def toggleCentering(self):
         self.center_points = not self.center_points
         self.updateDisparity()
-        self.updateButtonLabels()
-        self.centerPointsAction.setChecked(self.center_points)
-        self.unified_settings_window.toggle_centering_button.setChecked(self.center_points)
+        self.updateGUI()
 
     def toggleGrid(self):
         self.grid_visible = not self.grid_visible
         self.point_cloud_window.toggleGrid()
-        self.updateButtonLabels()
-        print(self.grid_visible)
-        self.showGridAction.setChecked(self.grid_visible)
-        self.unified_settings_window.toggle_grid_button.setChecked(self.grid_visible)
+        self.updateGUI()
 
     def updateSliders(self):
         if self.use_sgbm:
@@ -904,6 +881,26 @@ class StereoVisionApp(QtWidgets.QMainWindow):
 
             self.slider_labels["lambda"].setEnabled(False)
             self.slider_labels["sigma"].setEnabled(False)
+
+    def updateMenuActions(self):
+        self.showGridAction.setChecked(self.grid_visible)
+        self.toggleMapColorAction.setChecked(self.depth_map_color)
+        self.showLeftImageAction.setChecked(self.image_visible)
+        self.autoLoopAction.setChecked(self.auto_loop)
+        self.centerPointsAction.setChecked(self.center_points)
+
+        if self.display_mode == "RGB":
+            self.rgbAction.setChecked(True)
+            self.bgrAction.setChecked(False)
+            self.greyscaleAction.setChecked(False)
+        elif self.display_mode == "BGR":
+            self.rgbAction.setChecked(False)
+            self.bgrAction.setChecked(True)
+            self.greyscaleAction.setChecked(False)
+        elif self.display_mode == "Greyscale":
+            self.rgbAction.setChecked(False)
+            self.bgrAction.setChecked(False)
+            self.greyscaleAction.setChecked(True)
 
     def updateDisparity(self):
         self.rectified_left = cv2.remap(self.left_img, self.map1_left, self.map2_left, cv2.INTER_LINEAR)
@@ -1047,24 +1044,8 @@ class StereoVisionApp(QtWidgets.QMainWindow):
 
     def setDisplayMode(self, mode):
         self.display_mode = mode
-        self.updateDisplayModeActions()
         self.updateDisparity()
-
-    def updateDisplayModeActions(self):
-        if self.display_mode == "RGB":
-            self.rgbAction.setChecked(True)
-            self.bgrAction.setChecked(False)
-            self.greyscaleAction.setChecked(False)
-        elif self.display_mode == "BGR":
-            self.rgbAction.setChecked(False)
-            self.bgrAction.setChecked(True)
-            self.greyscaleAction.setChecked(False)
-        elif self.display_mode == "Greyscale":
-            self.rgbAction.setChecked(False)
-            self.bgrAction.setChecked(False)
-            self.greyscaleAction.setChecked(True)
-
-        self.unified_settings_window.updateButtonLabels()
+        self.updateGUI()
 
     def nextImage(self):
         if self.playing:
@@ -1125,8 +1106,25 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         if not self.use_live_feed:
             self.prev_button.setEnabled(self.current_index > 0)
             self.next_button.setEnabled(self.current_index < len(self.image_pairs) - 1)
-        self.unified_settings_window.updateButtonLabels()
+
         self.video_slider.updatePlayPauseButton()
+
+        self.unified_settings_window.toggle_image_button.setText(f'Show Left Image')
+        self.unified_settings_window.display_mode_button.setText(f'Display Mode: {self.display_mode}')
+        self.unified_settings_window.toggle_centering_button.setText(f'Center Points')
+        self.unified_settings_window.toggle_grid_button.setText(f'Show Grid')
+        self.unified_settings_window.auto_loop_button.setText(f'Auto Loop')
+        
+        self.unified_settings_window.toggle_grid_button.setChecked(self.grid_visible)
+        self.unified_settings_window.toggle_centering_button.setChecked(self.center_points)
+        self.unified_settings_window.toggle_image_button.setChecked(self.image_visible)
+        self.unified_settings_window.auto_loop_button.setChecked(self.auto_loop)
+        self.unified_settings_window.depth_map_color_button.setChecked(self.depth_map_color)
+
+    def updateGUI(self):
+        self.updateButtonLabels()
+        self.updateMenuActions()
+        self.updateSliders()
 
     def loadParameters(self):
         options = QtWidgets.QFileDialog.Options()
@@ -1160,9 +1158,8 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.display_mode = parameters.get("displayMode", self.display_mode)
         self.show_depth_map = parameters.get("showDepthMap", self.show_depth_map)
 
-        self.updateSliders()
         self.updateDisparity()
-        self.updateButtonLabels()
+        self.updateGUI()
 
     def saveParameters(self):
         if self.current_file:
