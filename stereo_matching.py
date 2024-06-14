@@ -367,6 +367,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.baseline = self.config["baseline"]
         self.is_bgr = self.config.get("BGR", False)
         self.use_live_feed = self.config.get("Live", False)
+        self.use_stereo = self.config.get("use_stereo_config", False)
 
     def initUI(self):
 
@@ -708,19 +709,31 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         return img
 
     def loadCameraParams(self):
-        fs_left = cv2.FileStorage(self.config["left_camera_config"], cv2.FILE_STORAGE_READ)
-        self.K_left = fs_left.getNode("camera_matrix").mat()
-        self.dist_coeffs_left = fs_left.getNode("dist_coeffs").mat()
-        self.focal_length = self.K_left[0, 0]  
-        fs_left.release()
 
-        fs_right = cv2.FileStorage(self.config["right_camera_config"], cv2.FILE_STORAGE_READ)
-        self.K_right = fs_right.getNode("camera_matrix").mat()
-        self.dist_coeffs_right = fs_right.getNode("dist_coeffs").mat()
-        fs_right.release()
+        if self.use_stereo:
+            fs_stereo = cv2.FileStorage(self.config["stereo_camera_config"], cv2.FILE_STORAGE_READ)
+            self.K_left = fs_stereo.getNode("cameraMatrixL").mat()
+            self.dist_coeffs_left = fs_stereo.getNode("distCoeffsL").mat()
+            self.K_right = fs_stereo.getNode("cameraMatrixR").mat()
+            self.dist_coeffs_right = fs_stereo.getNode("distCoeffsR").mat()
+            self.R = fs_stereo.getNode("R").mat()
+            self.T = fs_stereo.getNode("T").mat()
+            fs_stereo.release()
+        else:
+            fs_left = cv2.FileStorage(self.config["left_camera_config"], cv2.FILE_STORAGE_READ)
+            self.K_left = fs_left.getNode("camera_matrix").mat()
+            self.dist_coeffs_left = fs_left.getNode("dist_coeffs").mat()
+            self.focal_length = self.K_left[0, 0]  
+            fs_left.release()
 
-        self.R = np.eye(3, dtype=np.float64)
-        self.T = np.array([[self.baseline], [0], [0]], dtype=np.float64)
+            fs_right = cv2.FileStorage(self.config["right_camera_config"], cv2.FILE_STORAGE_READ)
+            self.K_right = fs_right.getNode("camera_matrix").mat()
+            self.dist_coeffs_right = fs_right.getNode("dist_coeffs").mat()
+            fs_right.release()
+
+            self.R = np.eye(3, dtype=np.float64)
+            self.T = np.array([[self.baseline], [0], [0]], dtype=np.float64)
+        
 
     def initData(self):
         # Make sure images are loaded before initializing data
@@ -740,17 +753,27 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.K_right[0, 2] *= self.scaling_factor
         self.K_right[1, 2] *= self.scaling_factor
 
-        # Calculate the optimal new camera matrices
-        self.K_left_optimal, self.roi_left = cv2.getOptimalNewCameraMatrix(self.K_left, self.dist_coeffs_left, image_size, 1, image_size)
-        self.K_right_optimal, self.roi_right = cv2.getOptimalNewCameraMatrix(self.K_right, self.dist_coeffs_right, image_size, 1, image_size)
+        if self.use_stereo:
+            self.K_left_optimal = self.K_left
+            self.K_right_optimal = self.K_right
+        else:
+            # Calculate the optimal new camera matrices
+            self.K_left_optimal, self.roi_left = cv2.getOptimalNewCameraMatrix(self.K_left, self.dist_coeffs_left, image_size, 1, image_size)
+            self.K_right_optimal, self.roi_right = cv2.getOptimalNewCameraMatrix(self.K_right, self.dist_coeffs_right, image_size, 1, image_size)
 
         # Perform stereo rectification
-        self.R1, self.R2, self.P1, self.P2, self.Q, _, _ = cv2.stereoRectify(
+        self.R1, self.R2, self.P1, self.P2, self.Q, roi_left, roi_right = cv2.stereoRectify(
             self.K_left_optimal, self.dist_coeffs_left, 
             self.K_right_optimal, self.dist_coeffs_right, 
             image_size, self.R, self.T, 
             alpha=0
         )
+
+        if self.use_stereo:
+            self.roi_left = roi_left
+            self.roi_right = roi_right
+
+        self.focal_length = self.P1[0,0]
 
         # Initialize undistort rectify maps
         self.map1_left, self.map2_left = cv2.initUndistortRectifyMap(
@@ -1017,7 +1040,9 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         rotation_matrix_x = np.array([[1, 0, 0],
                                     [0, 0, -1],
                                     [0, 1, 0]], dtype=np.float64)
-        out_points = out_points.dot(rotation_matrix_x.T)  
+        out_points = out_points.dot(rotation_matrix_x.T) 
+
+        out_points[..., 2] = -out_points[..., 2] 
 
         # Center the mean of the points
         if self.center_points and out_points.size > 0:
