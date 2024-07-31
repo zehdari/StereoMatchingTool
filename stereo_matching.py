@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import pyqtgraph as pg
 import pyqtgraph.opengl as gl
-from PyQt5 import QtWidgets, QtCore, QtGui
+from PyQt6 import QtWidgets, QtCore, QtGui
 import sys
 import os
 import yaml
@@ -48,15 +48,15 @@ class DepthMapWindow(QtWidgets.QWidget):
     def initUI(self):
         self.layout = QtWidgets.QHBoxLayout()
         self.depth_map_label = QtWidgets.QLabel()
-        self.depth_map_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.depth_map_label.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        self.depth_map_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.depth_map_label.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed))
 
         self.left_image_label = QtWidgets.QLabel()
-        self.left_image_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.left_image_label.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        self.left_image_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.left_image_label.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed))
 
-        self.layout.addWidget(self.depth_map_label, alignment=QtCore.Qt.AlignCenter)
-        self.layout.addWidget(self.left_image_label, alignment=QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.depth_map_label, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.layout.addWidget(self.left_image_label, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
 
         self.setLayout(self.layout)
 
@@ -73,7 +73,7 @@ class DepthMapWindow(QtWidgets.QWidget):
             return QtGui.QImage(cv_img.data, width, height, bytes_per_line, QtGui.QImage.Format_Grayscale8)
         else:
             bytes_per_line = 3 * width
-            return QtGui.QImage(cv_img.data, width, height, bytes_per_line, QtGui.QImage.Format_RGB888).rgbSwapped()
+            return QtGui.QImage(cv_img.data, width, height, bytes_per_line, QtGui.QImage.Format.Format_RGB888).rgbSwapped()
 
     def toggleLeftImageVisibility(self, visible):
         self.left_image_label.setVisible(visible)
@@ -124,7 +124,7 @@ class ImageWindow(QtWidgets.QWidget):
         height, width = cv_img.shape[:2]
         bytes_per_line = 3 * width
         cv_img = cv_img.copy()
-        return QtGui.QImage(cv_img.data, width, height, bytes_per_line, QtGui.QImage.Format_RGB888).rgbSwapped()
+        return QtGui.QImage(cv_img.data, width, height, bytes_per_line, QtGui.QImage.Format.Format_RGB888).rgbSwapped()
 
 class UnifiedSettingsWindow(QtWidgets.QWidget):
     def __init__(self, depth_map_window, point_cloud_window, stereo_app):
@@ -194,7 +194,7 @@ class UnifiedSettingsWindow(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout()
         
         self.point_size_label = QtWidgets.QLabel(f"Point Size: {self.point_cloud_window.scatter.size}")
-        self.point_size_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.point_size_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.point_size_slider.setMinimum(1)
         self.point_size_slider.setMaximum(10)
         self.point_size_slider.setValue(self.point_cloud_window.scatter.size)
@@ -204,7 +204,7 @@ class UnifiedSettingsWindow(QtWidgets.QWidget):
         layout.addWidget(self.point_size_slider)
 
         self.point_scale_label = QtWidgets.QLabel(f"Point Scale: {int(self.stereo_app.point_scale * 1000)}")
-        self.point_scale_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.point_scale_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.point_scale_slider.setMinimum(1)
         self.point_scale_slider.setMaximum(1000)
         self.point_scale_slider.setValue(int(self.stereo_app.point_scale * 1000))
@@ -264,7 +264,7 @@ class VideoSlider(QtWidgets.QWidget):
         layout = QtWidgets.QHBoxLayout()
 
         self.play_pause_button = QtWidgets.QPushButton('Play')
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
 
         self.play_pause_button.clicked.connect(self.togglePlayPause)
         self.slider.sliderReleased.connect(self.updateFramePosition)
@@ -378,18 +378,18 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         fileMenu = menubar.addMenu('File')
 
         # Add "Save" action
-        self.saveAction = QtWidgets.QAction('Save', self)
+        self.saveAction = QtGui.QAction('Save', self)
         self.saveAction.setEnabled(False)
         self.saveAction.triggered.connect(self.saveParameters)
         fileMenu.addAction(self.saveAction)
 
         # Add "Save As" action
-        saveAsAction = QtWidgets.QAction('Save As...', self)
+        saveAsAction = QtGui.QAction('Save As...', self)
         saveAsAction.triggered.connect(self.saveAsParameters)
         fileMenu.addAction(saveAsAction)
 
         # Add "Load Parameters" action
-        loadAction = QtWidgets.QAction('Load Parameters', self)
+        loadAction = QtGui.QAction('Load Parameters', self)
         loadAction.triggered.connect(self.loadParameters)
         fileMenu.addAction(loadAction)
 
@@ -397,7 +397,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         viewMenu = menubar.addMenu('View')
 
         # Add "Toggle Map Color" action
-        self.toggleMapColorAction = QtWidgets.QAction('Toggle Map Color', self, checkable=True)
+        self.toggleMapColorAction = QtGui.QAction('Toggle Map Color', self, checkable=True)
         self.toggleMapColorAction.setChecked(self.depth_map_color)
         self.toggleMapColorAction.triggered.connect(self.toggleDepthMapColor)
         viewMenu.addAction(self.toggleMapColorAction)
@@ -405,7 +405,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         viewMenu.addSeparator()
 
         # Add "Show Left Image" action
-        self.showLeftImageAction = QtWidgets.QAction('Show Left Image', self, checkable=True)
+        self.showLeftImageAction = QtGui.QAction('Show Left Image', self, checkable=True)
         self.showLeftImageAction.setChecked(self.image_visible)
         self.showLeftImageAction.triggered.connect(self.toggleImageVisibility)
         viewMenu.addAction(self.showLeftImageAction)
@@ -415,10 +415,10 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         viewMenu.addMenu(displayModeMenu)
 
         # Add RGB, BGR, Greyscale actions to the submenu
-        self.rgbAction = QtWidgets.QAction('RGB', self, checkable=True)
-        self.bgrAction = QtWidgets.QAction('BGR', self, checkable=True)
-        self.greyscaleAction = QtWidgets.QAction('Greyscale', self, checkable=True)
-        displayModeGroup = QtWidgets.QAction('Display Mode', self)
+        self.rgbAction = QtGui.QAction('RGB', self, checkable=True)
+        self.bgrAction = QtGui.QAction('BGR', self, checkable=True)
+        self.greyscaleAction = QtGui.QAction('Greyscale', self, checkable=True)
+        displayModeGroup = QtGui.QAction('Display Mode', self)
         displayModeGroup.setMenu(displayModeMenu)
 
         self.rgbAction.triggered.connect(lambda: self.setDisplayMode('RGB'))
@@ -430,20 +430,20 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         displayModeMenu.addAction(self.greyscaleAction)
 
         # Add "Stereo View" action
-        self.stereoViewAction = QtWidgets.QAction('Stereo View', self)
+        self.stereoViewAction = QtGui.QAction('Stereo View', self)
         self.stereoViewAction.triggered.connect(self.showStereoView)
         viewMenu.addAction(self.stereoViewAction)
 
         viewMenu.addSeparator()
 
         # Add "Center Points" action
-        self.centerPointsAction = QtWidgets.QAction('Center Points', self, checkable=True)
+        self.centerPointsAction = QtGui.QAction('Center Points', self, checkable=True)
         self.centerPointsAction.setChecked(self.center_points)
         self.centerPointsAction.triggered.connect(self.toggleCentering)
         viewMenu.addAction(self.centerPointsAction)
 
         # Add "Show Grid" action
-        self.showGridAction = QtWidgets.QAction('Show Grid', self, checkable=True)
+        self.showGridAction = QtGui.QAction('Show Grid', self, checkable=True)
         self.showGridAction.setChecked(self.grid_visible)
         self.showGridAction.triggered.connect(self.toggleGrid)
         viewMenu.addAction(self.showGridAction)
@@ -451,7 +451,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         viewMenu.addSeparator()
 
         # Add "AutoLoop" action
-        self.autoLoopAction = QtWidgets.QAction('AutoLoop', self, checkable=True)
+        self.autoLoopAction = QtGui.QAction('AutoLoop', self, checkable=True)
         self.autoLoopAction.setChecked(self.auto_loop)
         self.autoLoopAction.triggered.connect(self.toggleAutoLoop)
         viewMenu.addAction(self.autoLoopAction)
@@ -460,7 +460,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
 
         settingsMenu = menubar.addMenu('Settings')
         # Add actions to "Settings" menu
-        openSettingsAction = QtWidgets.QAction('Open Settings', self)
+        openSettingsAction = QtGui.QAction('Open Settings', self)
         openSettingsAction.triggered.connect(self.showSettings)
         settingsMenu.addAction(openSettingsAction)
 
@@ -470,7 +470,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.main_layout = QtWidgets.QHBoxLayout(central_widget)
 
         self.left_panel = QtWidgets.QWidget()
-        self.left_panel.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Expanding)
+        self.left_panel.setSizePolicy(QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Maximum, QtWidgets.QSizePolicy.Policy.Expanding))
         self.left_panel.setMinimumWidth(300)
         self.slider_layout = QtWidgets.QVBoxLayout(self.left_panel)
 
@@ -496,7 +496,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.slider_labels = {}
         for name, (min_val, max_val, default) in self.slider_params.items():
             slider_label = QtWidgets.QLabel(f"{name}: {default}")
-            slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+            slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
             slider.setMinimum(min_val)
             slider.setMaximum(max_val)
             slider.setValue(default)
@@ -509,7 +509,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
             self.slider_labels[name] = slider_label
 
         self.mode_label = QtWidgets.QLabel(f"mode: {self.MODE_NAMES[0]}")
-        self.mode_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.mode_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.mode_slider.setMinimum(0)
         self.mode_slider.setMaximum(len(self.MODES) - 1)
         self.mode_slider.setValue(0)
@@ -520,7 +520,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.slider_layout.addWidget(self.mode_slider)
 
         self.prefiltertype_label = QtWidgets.QLabel(f"preFilterType: {self.PREFILTER_TYPE_NAMES[0]}")
-        self.prefiltertype_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.prefiltertype_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.prefiltertype_slider.setMinimum(0)
         self.prefiltertype_slider.setMaximum(len(self.PREFILTER_TYPES) - 1)
         self.prefiltertype_slider.setValue(0)
@@ -531,7 +531,7 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.slider_layout.addWidget(self.prefiltertype_slider)
 
         self.doffs_label = QtWidgets.QLabel("doffs: 0")
-        self.doffs_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.doffs_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.doffs_slider.setMinimum(0)
         self.doffs_slider.setMaximum(1000)
         self.doffs_slider.setValue(0)
@@ -572,9 +572,9 @@ class StereoVisionApp(QtWidgets.QMainWindow):
         self.toggle_wls_button.setCheckable(True)
         self.button_layout.addWidget(self.toggle_wls_button)
 
-        self.right_layout.addWidget(self.button_panel, 0, QtCore.Qt.AlignTop)
-        self.right_layout.addWidget(self.video_slider, 0, QtCore.Qt.AlignTop)
-        self.right_layout.addWidget(self.depth_map_window, 0, QtCore.Qt.AlignTop)
+        self.right_layout.addWidget(self.button_panel, 0, QtCore.Qt.AlignmentFlag.AlignTop)
+        self.right_layout.addWidget(self.video_slider, 0, QtCore.Qt.AlignmentFlag.AlignTop)
+        self.right_layout.addWidget(self.depth_map_window, 0, QtCore.Qt.AlignmentFlag.AlignTop)
         self.right_layout.addWidget(self.point_cloud_window, 1)
 
         self.main_layout.addLayout(self.right_layout, 1)
@@ -1248,4 +1248,4 @@ if __name__ == '__main__':
     mainWin.setGeometry(50, 50, 1200, 900) 
     mainWin.setWindowTitle('Stereo Vision Disparity Adjustment')
     mainWin.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
